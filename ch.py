@@ -984,7 +984,7 @@ class Message:
 	#
 	# Init, not __init__ this time!
 	#
-	def __init(self, msgid, mtime, user, body):
+	def __init(self, msgid, mtime = None, user = None, body = None):
 		self._msgid = msgid
 		self._time = mtime
 		self._user = user
