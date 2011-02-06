@@ -34,6 +34,9 @@ import re
 Userlist_Recent = 0
 Userlist_All    = 1
 
+BigMessage_Multiple = 0
+BigMessage_Cut      = 1
+
 ####
 # Tagserver stuff
 ####
@@ -183,6 +186,8 @@ class RoomConnection:
 	_userlistUnique = True
 	_userlistMemory = 50
 	_userlistEventUnique = False
+	_tooBigMessage = BigMessage_Multiple
+	_maxLength = 800
 	
 	####
 	# Init
@@ -657,6 +662,15 @@ class RoomConnection:
 		@type msg: str
 		@param msg: message
 		"""
+		if len(msg) > self._maxLength:
+			if self._tooBigMessage == BigMessage_Cut:
+				self.message(msg[:self._maxLength])
+			elif self._tooBigMessage == BigMessage_Multiple:
+				while len(msg) > 0:
+					sect = msg[:self._maxLength]
+					msg = msg[self._maxLength:]
+					self.message(sect)
+			return
 		if self._loggedIn:
 			if not self._name.startswith("#"):
 				msg = "<n" + self._nameColor + "/>" + msg
