@@ -27,6 +27,12 @@ import threading
 import time
 import random
 import re
+import sys
+
+####
+# Python 2 compatibility
+####
+if sys.version_info[0] < 3: input = raw_input
 
 ####
 # Constants
@@ -422,9 +428,9 @@ class RoomConnection:
 		"""Called when the user count changes."""
 		pass
 	
-	#
+	####
 	# Ping
-	#
+	####
 	def _pingloop(self):
 		"""Ping loop, ran in a seprate thread."""
 		while self.connected:
@@ -432,16 +438,17 @@ class RoomConnection:
 			self.onPing()
 			time.sleep(self._pingDelay)
 	
-	#
+	####
 	# Main
-	#
+	####
 	def main(self):
 		"""Main loop."""
 		threading._start_new_thread(self._pingloop, ())
 		while True:
 			cmd = self._receiveCommand()
 			self.onRaw(cmd)
-			cmd, *args = cmd.split(":")
+			data = cmd.split(":")
+			cmd, args = data[0], data[1:]
 			if   cmd == "ok":
 				if args[2] == "M": #succesful login
 					self._isAnon = False
@@ -643,9 +650,9 @@ class RoomConnection:
 		self = cl(room, name, password)
 		self.main()
 	
-	#
+	####
 	# Commands
-	#
+	####
 	def rawMessage(self, msg):
 		"""
 		Send a message without n and f tags.
@@ -803,9 +810,9 @@ class RoomConnection:
 		if size > 22: size = 22
 		self._fontSize = size
 	
-	#
+	####
 	# Util
-	#
+	####
 	def _sendCommand(self, *args):
 		"""
 		Send a command.
@@ -836,9 +843,9 @@ class RoomConnection:
 				self.onDisconnect()
 		return rbuf.decode().rstrip("\r\n\x00")
 	
-	#
+	####
 	# History
-	#
+	####
 	def _addHistory(self, msg):
 		"""
 		Add a message to history.
@@ -848,9 +855,9 @@ class RoomConnection:
 		"""
 		self._history.append(msg)
 	
-	#
+	####
 	# Misc
-	#
+	####
 	def setAnonId(self, aid):
 		"""
 		Set anon Id.
@@ -865,49 +872,44 @@ class RoomConnection:
 		"""Update anon name."""
 		self._anonName = "!anon" + self._aid
 
-#
+####
 # User class
-#
-class User:
+####
+_users = dict()
+def User(name):
+	"""
+	Create a User with a name or return a User with that name.
+	If name is None, returns User("!anon").
+	
+	@type name: str
+	@param name: the name
+	
+	@rtype: User
+	@return: the User object
+	"""
+	if name == None: name = "!anon"
+	name = name.lower()
+	user = _users.get(name)
+	if not user:
+		user = _User(name)
+		_users[name] = user
+	return user
+
+class _User:
 	"""Class that represents a user."""
-	#
-	# User dict
-	#
-	_users = dict()
-	
-	#
-	# New
-	#
-	def __new__(cl, name, *args, **kw):
-		if name == None: name = "!anon"
-		name = name.lower()
-		user = cl._users.get(name)
-		if not user:
-			user = object.__new__(cl)
-			user.__init(name)
-			cl._users[name] = user
-		return user
-	
-	#
-	# __getattr__
-	# To suppress AttributeErrors. Disabled for now.
-	#
-	#def __getattr__(self, attr):
-	#	return None
-	
-	#
-	# Init, not __init__ this time!
-	#
-	def __init(self, name):
+	####
+	# Init
+	####
+	def __init__(self, name):
 		self._name = name.lower()
 		self._level = 0
 		self._sids = set()
 		self._msgs = list()
 		self._unid = None
 	
-	#
+	####
 	# Properties
-	#
+	####
 	def getName(self): return self._name
 	def getLevel(self): return self._level
 	def getSessionIds(self): return self._sids
@@ -920,9 +922,9 @@ class User:
 	messages = property(getMessages)
 	unid = property(getUnid)
 	
-	#
+	####
 	# Helper methods
-	#
+	####
 	def getLastMessage(self):
 		"""
 		Get the last sent message of this user.
@@ -935,31 +937,33 @@ class User:
 		except IndexError:
 			return None
 
-#
+####
 # Message class
-#
-class Message:
+####
+_msgs = dict()
+def Message(msgid, *args, **kw):
+	"""
+	Create a Message with an msgid or return a Message with that msgid.
+	If msgid is None, returns an anonymous message.
+	
+	@type msgid: str
+	@param msgid: the message id
+	
+	@rtype: Message
+	@return: the Message object
+	"""
+	if msgid == None: return _Message(None, *args, **kw)
+	msg = _msgs.get(msgid)
+	if not msg:
+		msg = _Message(msgid, *args, **kw)
+		_msgs[msgid] = msg
+	return msg
+
+class _Message:
 	"""Class that represents a message."""
-	#
-	# User dict
-	#
-	_msgs = dict()
-	
-	#
-	# New
-	#
-	def __new__(cl, msgid, *args, **kw):
-		if msgid == None:
-			msg = object.__new__(cl)
-			msg.__init(msgid, *args, **kw)
-			return msg
-		msg = cl._msgs.get(msgid)
-		if not msg:
-			msg = object.__new__(cl)
-			msg.__init(msgid, *args, **kw)
-			cl._msgs[msgid] = msg
-		return msg
-	
+	####
+	# Attach/detach
+	####
 	def attach(self, msgid):
 		"""
 		Attach the Message to a message id.
@@ -967,24 +971,25 @@ class Message:
 		@type msgid: str
 		@param msgid: message id
 		"""
-		self._msgid = msgid
-		self._msgs[msgid] = self
+		_msgid = msgid
+		_msgs[msgid] = self
 	
 	def detach(self):
-		del self._msgs[self._msgid]
+		"""Detach the Message."""
+		del _msgs[self._msgid]
 		self._msgid = None
 	
-	#
+	####
 	# __getattr__
 	# To suppress AttributeErrors. Disabled for now.
-	#
+	####
 	#def __getattr__(self, attr):
 	#	return None
 	
-	#
+	####
 	# Init, not __init__ this time!
-	#
-	def __init(self, msgid, mtime = None, user = None, body = None):
+	####
+	def __init__(self, msgid, mtime = None, user = None, body = None):
 		self._msgid = msgid
 		self._time = mtime
 		self._user = user
@@ -996,9 +1001,9 @@ class Message:
 		self._fontFace = "0"
 		self._fontColor = "000"
 	
-	#
+	####
 	# Properties
-	#
+	####
 	def getId(self): return self._msgid
 	def getTime(self): return self._time
 	def getUser(self): return self._user
