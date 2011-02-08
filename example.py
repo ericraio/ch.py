@@ -32,6 +32,13 @@ class Test(ch.RoomConnection):
 			self.rawMessage(message.raw)
 		elif message.body == "randomuser":
 			self.message(random.choice(self.usernames))
+		elif message.body[:5] == "nick ":
+			user.nick = message.body[5:]
+			self.message("your nick was set to " + message.body[5:])
+		elif message.body == "hi":
+			nick = user.nick
+			if not nick: nick = user.name
+			self.message("hi, " + nick)
 	
 	def onFloodWarning(self):
 		self.reconnect()

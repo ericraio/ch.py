@@ -28,6 +28,14 @@ import time
 import random
 import re
 import sys
+import redis
+import json
+
+####
+# Init Redis
+####
+r = redis.Redis()
+r.select(2) #blabla change this
 
 ####
 # Python 2 compatibility
@@ -898,6 +906,20 @@ def User(name):
 class _User:
 	"""Class that represents a user."""
 	####
+	# Storage
+	####
+	_volatile = ("_name", "_level", "_sids", "_msgs", "_unid")
+	def __getattr__(self, attr): return None #No more AttributeErrors!
+	def __setattr__(self, attr, val):
+		if attr not in self._volatile:
+			r.hset("User:" + self._name, attr, json.dumps(val))
+		super(_User, self).__setattr__(attr, val)
+	def _load(self):
+		vals = r.hgetall("User:" + self._name)
+		for attr, val in vals.items():
+			setattr(self, attr, json.loads(val))
+	
+	####
 	# Init
 	####
 	def __init__(self, name):
@@ -906,6 +928,7 @@ class _User:
 		self._sids = set()
 		self._msgs = list()
 		self._unid = None
+		self._load()
 	
 	####
 	# Properties
