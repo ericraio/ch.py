@@ -48,4 +48,4 @@ class Test(ch.RoomConnection):
 	def onMessageDelete(self, user, msg):
 		self.message("a message got deleted! " + user.name + ": " + msg.body)
 
-Test.easy_start()
+if __name__ == "__main__": Test.easy_start()

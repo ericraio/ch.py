@@ -28,6 +28,7 @@ import time
 import random
 import re
 import sys
+import select
 
 ####
 # Python 2 compatibility
@@ -202,6 +203,7 @@ class RoomConnection:
 		self._port = port or 443
 		self._uid = uid or genUid()
 		self._aid = "0000"
+		self._rbuf = b""
 		self._updateAnonName()
 		self._name_req = name
 		self._password_req = password
@@ -252,6 +254,10 @@ class RoomConnection:
 		self._connect()
 		self._reconnecting = False
 	
+	def disconnect(self):
+		self._disconnect()
+		self.onDisconnect()
+	
 	def _disconnect(self):
 		"""Disconnect from the server."""
 		if not self._reconnecting: self.connected = False
@@ -275,6 +281,7 @@ class RoomConnection:
 			return self._anonName
 		else:
 			return self._name
+	def getRoom(self): return self._room
 	def getUserlist(self, mode = None, unique = None, memory = None):
 		ul = None
 		if mode == None: mode = self._userlistMode
@@ -306,6 +313,7 @@ class RoomConnection:
 	def getUserCount(self): return self._userCount
 	
 	name = property(getName)
+	room = property(getRoom)
 	userlist = property(getUserlist)
 	usernames = property(getUserNames)
 	user = property(getUser)
@@ -432,201 +440,227 @@ class RoomConnection:
 	def _pingloop(self):
 		"""Ping loop, ran in a seprate thread."""
 		while self.connected:
-			self._sendCommand("")
-			self.onPing()
+			self.ping()
 			time.sleep(self._pingDelay)
 	
 	####
 	# Main
 	####
 	def main(self):
-		"""Main loop."""
-		threading._start_new_thread(self._pingloop, ())
+		"""Main loop, continuously feeds data automatically."""
+		threading._start_new_thread(self._pingloop, ()) #TODO: make asynchronous
 		while True:
-			cmd = self._receiveCommand()
-			self.onRaw(cmd)
-			data = cmd.split(":")
-			cmd, args = data[0], data[1:]
-			if   cmd == "ok":
-				if args[2] == "M": #succesful login
-					self._isAnon = False
-					self._loggedIn = True
-					self._name = self._name_req
-					self._password = self._password_req
-				else:
-					self._isAnon = True
-					self._loggedIn = False
-					self._name = None
-					self._password = None
-					self._updateAnonName()
-				del self._name_req
-				del self._password_req
-				self._owner = User(args[0])
-				self._owner._level = 2
-				self._uid = args[1]
-				self._aid = args[1][4:8]
-				self._mods = set(map(lambda x: User(x), args[6].split(";")))
-				for mod in self._mods:
-					mod._level = 1
-				self._i_log = list()
-			elif cmd == "inited":
-				for msg in reversed(self._i_log):
-					user = msg._user
-					user._msgs.append(msg)
-					self.onHistoryMessage(user, msg)
-					self._addHistory(msg)
-				del self._i_log
-				self._sendCommand("g_participants", "start")
-				self._sendCommand("getpremium", "1")
-				if self._firstConnect:
-					self.onConnect()
-					self._firstConnect = False
-				else:
-					self.onReconnect()
-			elif cmd == "premium":
-				if float(args[1]) > time.time():
-					self._premium = True
-					if self._mbg: self.enableBg()
-					if self._mrec: self.enableRecording()
-				else:
-					self._premium = False
-			elif cmd == "denied":
+			try:
+				data = self._sock.recv(1024)
+			except socket.error:
 				self._disconnect()
-				self.onConnectFail()
-			elif cmd == "mods":
-				modnames = args[0].split(";")
-				mods = set(map(lambda x: User(x), modnames))
-				premods = set(map(lambda x: User(x), self._mods))
-				for user in mods - premods: #demodded
-					user._level = 0
-					self._mods.remove(user)
-				for user in premods - mods: #modded
-					user._level = 1
-					self._mods.add(user)
-				self.onModChange()
-			elif cmd == "pwdok":
+				self.onDisconnect()
+			self._feed(data)
+	
+	def _feed(self, data):
+		"""
+		Feed data to the connection.
+		
+		@type data: bytes
+		@param data: data to be fed
+		"""
+		self._rbuf += data
+		while self._rbuf.find(b"\x00") != -1:
+			data = self._rbuf.split(b"\x00")
+			for food in data[:-1]:
+				self._process(food.decode().rstrip("\r\n")) #numnumz ;3
+			self._rbuf = data[-1]
+	
+	def _process(self, data):
+		"""
+		Process a command string.
+		
+		@type data: str
+		@param data: the command string
+		"""
+		self.onRaw(data)
+		data = data.split(":")
+		cmd, args = data[0], data[1:]
+		if   cmd == "ok":
+			if args[2] == "M": #succesful login
+				self._isAnon = False
 				self._loggedIn = True
 				self._name = self._name_req
 				self._password = self._password_req
-				del self._name_req
-				del self._password_req
-				self._sendCommand("getpremium", "1")
-				self.onLoginSuccess()
-			elif cmd == "badlogin":
-				del self._name_req
-				del self._password_req
-				self.onLoginFail()
-			elif cmd == "tb":
-				self.onFloodBan()
-			elif cmd == "fw":
-				self.onFlagged()
-			elif cmd == "b":
-				mtime = float(args[0])
-				puid = args[3]
-				ip = args[6]
-				name = args[1]
-				rawmsg = ":".join(args[8:])
-				msg, n, f = clean_message(rawmsg)
-				if name == "":
-					nameColor = "000"
-					name = "#" + args[2]
-					if name == "#":
-						name = "!anon" + getAnonId(n, puid)
-				else:
-					if n: nameColor = parseNameColor(n)
-					else: nameColor = "000"
-				i = args[5]
-				unid = args[4]
-				#Create an anonymous message and queue it because msgid is unknown.
-				msg = Message(None, mtime, User(name), msg)
-				msg._ip = ip
-				msg.user._unid = unid
-				msg._nameColor = nameColor
-				msg._raw = rawmsg
-				if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
-				self._mqueue[i] = msg
-			elif cmd == "u":
-				msg = self._mqueue[args[0]]
-				del self._mqueue[args[0]]
-				msg.attach(args[1])
-				msg.user._msgs.append(msg)
+			else:
+				self._isAnon = True
+				self._loggedIn = False
+				self._name = None
+				self._password = None
+				self._updateAnonName()
+			del self._name_req
+			del self._password_req
+			self._owner = User(args[0])
+			self._owner._level = 2
+			self._uid = args[1]
+			self._aid = args[1][4:8]
+			self._mods = set(map(lambda x: User(x), args[6].split(";")))
+			for mod in self._mods:
+				mod._level = 1
+			self._i_log = list()
+		elif cmd == "inited":
+			for msg in reversed(self._i_log):
+				user = msg._user
+				user._msgs.append(msg)
+				self.onHistoryMessage(user, msg)
 				self._addHistory(msg)
-				self.onMessage(msg.user, msg)
-			elif cmd == "i":
-				mtime = float(args[0])
-				puid = args[3]
-				ip = args[6]
-				if ip == "": ip = None
-				name = args[1]
-				rawmsg = ":".join(args[8:])
-				msg, n, f = clean_message(rawmsg)
-				msgid = args[5]
-				if name == "":
-					nameColor = "000"
-					name = "#" + args[2]
-					if name == "#":
-						name = "!anon" + getAnonId(n, puid)
-				else:
-					nameColor = parseNameColor(n)
-				msg = Message(msgid, mtime, User(name), msg)
-				if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
-				msg._ip = args[6]
-				msg._nameColor = nameColor
-				msg.user._unid = args[4]
-				msg._raw = rawmsg
-				self._i_log.append(msg)
-			elif cmd == "g_participants":
-				args = ":".join(args)
-				args = args.split(";")
-				for data in args:
-					data = data.split(":")
-					name = data[3].lower()
-					if name == "none": continue
-					user = User(name)
-					user.jtime = float(data[1])
-					user._sids.add(data[0])
-					self._userlist.append(user)
-			elif cmd == "participant":
-				if args[0] == "0": #leave
-					name = args[3].lower()
-					if name == "none": continue
-					user = User(name)
-					user._sids.remove(args[1])
-					self._userlist.remove(user)
-					if not user in self._userlist or not self._userlistEventUnique:
-						self.onLeave(user)
-				else: #join
-					name = args[3].lower()
-					if name == "none": continue
-					user = User(name)
-					user.jtime = float(args[6])
-					user._sids.add(args[1])
-					if not user in self._userlist: doEvent = True
-					else: doEvent = False
-					self._userlist.append(user)
-					if doEvent or not self._userlistEventUnique: self.onJoin(user)
-			elif cmd == "show_fw": #flood warning
-				self.onFloodWarning()
-			elif cmd == "show_tb": #timedban, first
-				self.onFloodBan()
-			elif cmd == "tb": #timedban, repeat
-				self.onFloodBanRepeat()
-			elif cmd == "delete":
-				msg = Message(args[0])
+			del self._i_log
+			self._sendCommand("g_participants", "start")
+			self._sendCommand("getpremium", "1")
+			if self._firstConnect:
+				self.onConnect()
+				self._firstConnect = False
+			else:
+				self.onReconnect()
+		elif cmd == "premium":
+			if float(args[1]) > time.time():
+				self._premium = True
+				if self._mbg: self.enableBg()
+				if self._mrec: self.enableRecording()
+			else:
+				self._premium = False
+		elif cmd == "denied":
+			self._disconnect()
+			self.onConnectFail()
+		elif cmd == "mods":
+			modnames = args[0].split(";")
+			mods = set(map(lambda x: User(x), modnames))
+			premods = set(map(lambda x: User(x), self._mods))
+			for user in mods - premods: #demodded
+				user._level = 0
+				self._mods.remove(user)
+			for user in premods - mods: #modded
+				user._level = 1
+				self._mods.add(user)
+			self.onModChange()
+		elif cmd == "pwdok":
+			self._loggedIn = True
+			self._name = self._name_req
+			self._password = self._password_req
+			del self._name_req
+			del self._password_req
+			self._sendCommand("getpremium", "1")
+			self.onLoginSuccess()
+		elif cmd == "badlogin":
+			del self._name_req
+			del self._password_req
+			self.onLoginFail()
+		elif cmd == "tb":
+			self.onFloodBan()
+		elif cmd == "fw":
+			self.onFlagged()
+		elif cmd == "b":
+			mtime = float(args[0])
+			puid = args[3]
+			ip = args[6]
+			name = args[1]
+			rawmsg = ":".join(args[8:])
+			msg, n, f = clean_message(rawmsg)
+			if name == "":
+				nameColor = "000"
+				name = "#" + args[2]
+				if name == "#":
+					name = "!anon" + getAnonId(n, puid)
+			else:
+				if n: nameColor = parseNameColor(n)
+				else: nameColor = "000"
+			i = args[5]
+			unid = args[4]
+			#Create an anonymous message and queue it because msgid is unknown.
+			msg = Message(None, mtime, User(name), msg)
+			msg._ip = ip
+			msg.user._unid = unid
+			msg._nameColor = nameColor
+			msg._raw = rawmsg
+			if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
+			self._mqueue[i] = msg
+		elif cmd == "u":
+			msg = self._mqueue[args[0]]
+			del self._mqueue[args[0]]
+			msg.attach(args[1])
+			msg.user._msgs.append(msg)
+			self._addHistory(msg)
+			self.onMessage(msg.user, msg)
+		elif cmd == "i":
+			mtime = float(args[0])
+			puid = args[3]
+			ip = args[6]
+			if ip == "": ip = None
+			name = args[1]
+			rawmsg = ":".join(args[8:])
+			msg, n, f = clean_message(rawmsg)
+			msgid = args[5]
+			if name == "":
+				nameColor = "000"
+				name = "#" + args[2]
+				if name == "#":
+					name = "!anon" + getAnonId(n, puid)
+			else:
+				nameColor = parseNameColor(n)
+			msg = Message(msgid, mtime, User(name), msg)
+			if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
+			msg._ip = args[6]
+			msg._nameColor = nameColor
+			msg.user._unid = args[4]
+			msg._raw = rawmsg
+			self._i_log.append(msg)
+		elif cmd == "g_participants":
+			args = ":".join(args)
+			args = args.split(";")
+			for data in args:
+				data = data.split(":")
+				name = data[3].lower()
+				if name == "none": continue
+				user = User(name)
+				user.jtime = float(data[1])
+				user._sids.add(data[0])
+				self._userlist.append(user)
+		elif cmd == "participant":
+			if args[0] == "0": #leave
+				name = args[3].lower()
+				if name == "none": return
+				user = User(name)
+				user._sids.remove(args[1])
+				self._userlist.remove(user)
+				if not user in self._userlist or not self._userlistEventUnique:
+					self.onLeave(user)
+			else: #join
+				name = args[3].lower()
+				if name == "none": return
+				user = User(name)
+				user.jtime = float(args[6])
+				user._sids.add(args[1])
+				if not user in self._userlist: doEvent = True
+				else: doEvent = False
+				self._userlist.append(user)
+				if doEvent or not self._userlistEventUnique: self.onJoin(user)
+		elif cmd == "show_fw": #flood warning
+			self.onFloodWarning()
+		elif cmd == "show_tb": #timedban, first
+			self.onFloodBan()
+		elif cmd == "tb": #timedban, repeat
+			self.onFloodBanRepeat()
+		elif cmd == "delete":
+			msg = Message(args[0])
+			self._history.remove(msg)
+			msg.user._msgs.remove(msg)
+			self.onMessageDelete(msg.user, msg)
+			msg.detach()
+		elif cmd == "deleteall":
+			for msgid in args:
+				msg = Message(msgid)
 				self._history.remove(msg)
 				msg.user._msgs.remove(msg)
 				self.onMessageDelete(msg.user, msg)
 				msg.detach()
-			elif cmd == "deleteall":
-				for msgid in args:
-					msg = Message(msgid)
-					self._history.remove(msg)
-					msg.user._msgs.remove(msg)
-					self.onMessageDelete(msg.user, msg)
-					msg.detach()
-			elif cmd == "n":
-				self._userCount = int(args[0], 16)
-				self.onUserCountChange()
+		elif cmd == "n":
+			self._userCount = int(args[0], 16)
+			self.onUserCountChange()
 	
 	@classmethod
 	def easy_start(cl, room = None, name = None, password = None):
@@ -651,6 +685,10 @@ class RoomConnection:
 	####
 	# Commands
 	####
+	def ping(self):
+		self._sendCommand("")
+		self.onPing()
+	
 	def rawMessage(self, msg):
 		"""
 		Send a message without n and f tags.
@@ -825,22 +863,6 @@ class RoomConnection:
 			terminator = b"\r\n\x00"
 		self._sock.send(":".join(args).encode() + terminator)
 	
-	def _receiveCommand(self):
-		"""
-		Receive a command, blocks.
-		
-		@rtype: str
-		@return: command string
-		"""
-		rbuf = b""
-		while not rbuf.endswith(b"\x00"):
-			try:
-				rbuf += self._sock.recv(1)
-			except socket.error:
-				self._disconnect()
-				self.onDisconnect()
-		return rbuf.decode().rstrip("\r\n\x00")
-	
 	####
 	# History
 	####
@@ -869,6 +891,129 @@ class RoomConnection:
 	def _updateAnonName(self):
 		"""Update anon name."""
 		self._anonName = "!anon" + self._aid
+
+####
+# RoomManager class
+####
+class RoomManager:
+	"""Class that manages multiple RoomConnections."""
+	####
+	# Config
+	####
+	_RoomConnection = RoomConnection
+	
+	####
+	# Init
+	####
+	def __init__(self, name = None, password = None):
+		self._name = name
+		self._password = password
+		self._rooms = dict()
+	
+	####
+	# Join/leave
+	####
+	def joinRoom(self, room):
+		"""
+		Join a room or return None if already joined.
+		
+		@type room: str
+		@param room: room to join
+		
+		@rtype: RoomConnection or None
+		@return: the room or nothing
+		"""
+		room = room.lower()
+		if room not in self._rooms:
+			con = self._RoomConnection(room, self._name, self._password)
+			con.rbuf = b""
+			self._rooms[room] = con
+			return con
+		else:
+			return None
+	
+	def leaveRoom(self, room):
+		"""
+		Leave a room.
+		
+		@type room: str
+		@param room: room to leave
+		"""
+		room = room.lower()
+		if room in self._rooms:
+			con = self._rooms[room]
+			con._disconnect()
+			del rooms[room]
+	
+	def getRoom(self, room):
+		"""
+		Get room with a name, or None if not connected to this room.
+		
+		@type room: str
+		@param room: room
+		
+		@rtype: RoomConnection
+		@return: the room
+		"""
+		room = room.lower()
+		if room in self._rooms:
+			return self._rooms[room]
+		else:
+			return None
+	
+	####
+	# Properties
+	####
+	def getName(self): return self._name
+	def getPassword(self): return self._password
+	def getRooms(self): return set(self._rooms.keys())
+	def getConnections(self): return set(self._rooms.values())
+	
+	name = property(getName)
+	password = property(getPassword)
+	rooms = property(getRooms)
+	connections = property(getConnections)
+	
+	####
+	# Main
+	####
+	def main(self):
+		while True:
+			socks = list(map(lambda x: x._sock, self.connections))
+			rd, wr, sp = select.select(socks, [], [])
+			for sock in rd:
+				con = list(filter(lambda x: x._sock == sock, self.connections))[0]
+				try:
+					data = sock.recv(1024)
+					if(len(data) > 0):
+						con._feed(data)
+					else:
+						del self._rooms[con.room]
+						con.disconnect()
+				except socket.error:
+					pass
+	
+	@classmethod
+	def easy_start(cl, rooms = None, name = None, password = None):
+		"""
+		Prompts the user for missing info, then starts.
+		
+		@type rooms: list
+		@param room: rooms to join
+		@type name: str
+		@param name: name to join as ("" = None, None = unspecified)
+		@type password: str
+		@param password: password to join with ("" = None, None = unspecified)
+		"""
+		if not rooms: rooms = str(input("Room names separated by semicolons: ")).split(";")
+		if not name: name = str(input("User name: "))
+		if name == "": name = None
+		if not password: password = str(input("User password: "))
+		if password == "": password = None
+		self = cl(name, password)
+		for room in rooms:
+			self.joinRoom(room)
+		self.main()
 
 ####
 # User class
@@ -969,20 +1114,15 @@ class _Message:
 		@type msgid: str
 		@param msgid: message id
 		"""
-		_msgid = msgid
-		_msgs[msgid] = self
+		if self._msgid == None:
+			_msgid = msgid
+			_msgs[msgid] = self
 	
 	def detach(self):
 		"""Detach the Message."""
-		del _msgs[self._msgid]
-		self._msgid = None
-	
-	####
-	# __getattr__
-	# To suppress AttributeErrors. Disabled for now.
-	####
-	#def __getattr__(self, attr):
-	#	return None
+		if self._msgid != None:
+			del _msgs[self._msgid]
+			self._msgid = None
 	
 	####
 	# Init, not __init__ this time!
