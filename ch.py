@@ -73,14 +73,12 @@ def getServer(group):
 		else:
 			lnv = 1000
 		num = (fnv % lnv) / lnv
-		maxnum = 0
-		for wgt in tsweights:
-			maxnum += wgt[1]
-		accu = 0
+		maxnum = sum(map(lambda x: x[1], tsweights))
+		cumfreq = 0
 		sn = 0
 		for wgt in tsweights:
-			accu += float(wgt[1]) / maxnum
-			if(num <= accu):
+			cumfreq += float(wgt[1]) / maxnum
+			if(num <= cumfreq):
 				sn = int(wgt[0])
 				break
 	return "s" + str(sn) + ".chatango.com"
