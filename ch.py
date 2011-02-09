@@ -976,6 +976,13 @@ class RoomManager:
 	connections = property(getConnections)
 	
 	####
+	# Virtual Methods
+	####
+	def onInit(self):
+		"""Called on init."""
+		pass
+	
+	####
 	# Scheduling
 	####
 	class _Task:
@@ -1052,6 +1059,7 @@ class RoomManager:
 	# Main
 	####
 	def main(self):
+		self.onInit()
 		while True:
 			socks = list(map(lambda x: x._sock, self.connections))
 			rd, wr, sp = select.select(socks, [], [], self._TimerResolution)
