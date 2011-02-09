@@ -1,4 +1,4 @@
-####
+################################################################
 # File: ch.py
 # Title: Chatango Library
 # Author: Lumirayz/Lumz <lumirayz@gmail.com>
@@ -7,17 +7,17 @@
 #  support for several things including: messaging, message font,
 #  name color, deleting, banning, recent history, 2 userlist modes,
 #  flagging, avoiding flood bans, detecting flags.
-####
+################################################################
 
-####
+################################################################
 # License
-####
+################################################################
 # Copyright 2011 Lumirayz
 # This program is distributed under the terms of the GNU GPL.
 
-####
+################################################################
 # Imports
-####
+################################################################
 import socket
 import threading
 import time
@@ -26,23 +26,23 @@ import re
 import sys
 import select
 
-####
+################################################################
 # Python 2 compatibility
-####
+################################################################
 if sys.version_info[0] < 3: input = raw_input
 
-####
+################################################################
 # Constants
-####
+################################################################
 Userlist_Recent = 0
 Userlist_All    = 1
 
 BigMessage_Multiple = 0
 BigMessage_Cut      = 1
 
-####
+################################################################
 # Tagserver stuff
-####
+################################################################
 specials = {'mitvcanal': 26, 'aztecatv': 22, 'livenfree': 18, 'onepinoytvto': 10, 'animalog24': 8, 'portalsports': 18, 'pinoyakocg': 5, 'pinoy-online-tv-chat': 22, 'wowchatango': 20, 'narutowire': 10, 'bateriafina3': 21, 'flowhot-chat-online': 12, 'todoanimes': 22, 'phnoy': 21, 'winningtheinnergame': 26, 'fullsportshd2': 18, 'chia-anime': 12, 'narutochatt': 20, 'show-sports-chat': 5, 'pinoyakoinfocg': 5, 'futboldirectochat': 22, 'pnoytvroom': 18, 'pinoycable2': 20, 'stream2watch3': 26, 'ttvsports': 26, 'sport24lt': 26, 'ver-anime': 34, 'fezzer': 18, 'vipstand': 21, 'worldfootballusch2': 18, 'soccerjumbo': 21, 'myfoxdfw': 22, 'animelinkz': 20, 'worldfootballdotus': 26, 'as-chatroom': 10, 'dbzepisodeorg': 12, 'cebicheros': 21, 'watch-dragonball': 19, 'vip----tv': 18, 'tvanimefreak': 27}
 tsweights = [['5', 61], ['6', 61], ['7', 61], ['8', 61], ['16', 61], ['17', 61], ['9', 90], ['11', 90], ['13', 90], ['14', 90], ['15', 90], ['23', 110], ['24', 110], ['25', 110], ['28', 104], ['29', 104], ['30', 104], ['31', 104], ['32', 104], ['33', 104], ['35', 101], ['36', 101], ['37', 101], ['38', 101], ['39', 101], ['40', 101], ['41', 101], ['42', 101], ['43', 101], ['44', 101], ['45', 101], ['46', 101], ['47', 101], ['48', 101], ['49', 101], ['50', 101]]
 
@@ -80,15 +80,15 @@ def getServer(group):
 				break
 	return "s" + str(sn) + ".chatango.com"
 
-####
+################################################################
 # Uid
-####
+################################################################
 def genUid():
 	return str(random.randrange(10 ** 15, 10 ** 16))
 
-####
+################################################################
 # Message stuff
-####
+################################################################
 def clean_message(msg):
 	"""
 	Clean a message and return the message, n tag and f tag.
@@ -144,9 +144,9 @@ def parseFont(f):
 	except:
 		return None, None, None
 
-####
+################################################################
 # Anon id
-####
+################################################################
 def getAnonId(n, ssid):
 	"""Gets the anon's id."""
 	if n == None: n = "5504"
@@ -174,9 +174,9 @@ def getAnonN(aid, uid):
 	except ValueError:
 		return "0000"
 
-####
+################################################################
 # RoomConnection class
-####
+################################################################
 class RoomConnection:
 	"""Manages a connection with a Chatango room."""
 	####
@@ -486,12 +486,12 @@ class RoomConnection:
 			del self._name_req
 			del self._password_req
 			self._owner = User(args[0])
-			self._owner._level = 2
+			self._owner._levels[self] = 2
 			self._uid = args[1]
 			self._aid = args[1][4:8]
 			self._mods = set(map(lambda x: User(x), args[6].split(";")))
 			for mod in self._mods:
-				mod._level = 1
+				mod._levels[self] = 1
 			self._i_log = list()
 		elif cmd == "inited":
 			for msg in reversed(self._i_log):
@@ -522,10 +522,10 @@ class RoomConnection:
 			mods = set(map(lambda x: User(x), modnames))
 			premods = set(map(lambda x: User(x), self._mods))
 			for user in mods - premods: #demodded
-				user._level = 0
+				user._levels[self] = 0
 				self._mods.remove(user)
 			for user in premods - mods: #modded
-				user._level = 1
+				user._levels[self] = 1
 				self._mods.add(user)
 			self.onModChange()
 		elif cmd == "pwdok":
@@ -562,9 +562,9 @@ class RoomConnection:
 			i = args[5]
 			unid = args[4]
 			#Create an anonymous message and queue it because msgid is unknown.
-			msg = Message(None, mtime, User(name), msg)
+			msg = Message(None, mtime, User(name), msg, self)
 			msg._ip = ip
-			msg.user._unid = unid
+			msg._unid = unid
 			msg._nameColor = nameColor
 			msg._raw = rawmsg
 			if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
@@ -592,11 +592,11 @@ class RoomConnection:
 					name = "!anon" + getAnonId(n, puid)
 			else:
 				nameColor = parseNameColor(n)
-			msg = Message(msgid, mtime, User(name), msg)
+			msg = Message(msgid, mtime, User(name), msg, self)
 			if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
 			msg._ip = args[6]
 			msg._nameColor = nameColor
-			msg.user._unid = args[4]
+			msg._unid = args[4]
 			msg._raw = rawmsg
 			self._i_log.append(msg)
 		elif cmd == "g_participants":
@@ -610,6 +610,8 @@ class RoomConnection:
 				user.jtime = float(data[1])
 				user._sids.add(data[0])
 				self._userlist.append(user)
+				if self not in user._rooms:
+					user._rooms.add(self)
 		elif cmd == "participant":
 			if args[0] == "0": #leave
 				name = args[3].lower()
@@ -617,18 +619,23 @@ class RoomConnection:
 				user = User(name)
 				user._sids.remove(args[1])
 				self._userlist.remove(user)
-				if not user in self._userlist or not self._userlistEventUnique:
+				if user not in self._userlist or not self._userlistEventUnique:
 					self.onLeave(user)
+				if user not in self._userlist:
+					user._rooms.remove(self)
 			else: #join
 				name = args[3].lower()
 				if name == "none": return
 				user = User(name)
 				user.jtime = float(args[6])
 				user._sids.add(args[1])
-				if not user in self._userlist: doEvent = True
+				if user not in self._userlist: doEvent = True
 				else: doEvent = False
 				self._userlist.append(user)
-				if doEvent or not self._userlistEventUnique: self.onJoin(user)
+				if doEvent or not self._userlistEventUnique:
+					self.onJoin(user)
+				if doEvent:
+					user._rooms.add(self)
 		elif cmd == "show_fw": #flood warning
 			self.onFloodWarning()
 		elif cmd == "show_tb": #timedban, first
@@ -759,12 +766,12 @@ class RoomConnection:
 		@type message: Message
 		@param message: message to delete
 		"""
-		if self.user.level > 0:
+		if self.user.getLevel(self) > 0:
 			self._sendCommand("delmsg", message.msgid)
 	
 	def clearall(self):
 		"""Clear all messages. (Owner only)"""
-		if self.user.level == 2:
+		if self.user.getLevel(self) == 2:
 			self._sendCommand("clearall")
 	
 	def ban(self, msg):
@@ -775,8 +782,7 @@ class RoomConnection:
 		@param message: message to ban sender of
 		"""
 		if self.user.level > 0:
-			print(msg.user.unid)
-			self._sendCommand("block", msg.user.unid, msg.ip, msg.user.name)
+			self._sendCommand("block", msg.unid, msg.ip, msg.user.name)
 	
 	def enableBg(self):
 		"""Enable background if available."""
@@ -886,9 +892,9 @@ class RoomConnection:
 		"""Update anon name."""
 		self._anonName = "!anon" + self._aid
 
-####
+################################################################
 # RoomManager class
-####
+################################################################
 class RoomManager:
 	"""Class that manages multiple RoomConnections."""
 	####
@@ -1084,9 +1090,9 @@ class RoomManager:
 			self.joinRoom(room)
 		self.main()
 
-####
+################################################################
 # User class
-####
+################################################################
 _users = dict()
 def User(name):
 	"""
@@ -1114,30 +1120,34 @@ class _User:
 	####
 	def __init__(self, name):
 		self._name = name.lower()
-		self._level = 0
+		self._levels = dict()
 		self._sids = set()
+		self._rooms = set()
 		self._msgs = list()
-		self._unid = None
 	
 	####
 	# Properties
 	####
 	def getName(self): return self._name
-	def getLevel(self): return self._level
+	def getLevel(self, room): return self._levels.get(room) or 0
 	def getSessionIds(self): return self._sids
-	def getMessages(self): return self._msgs
-	def getUnid(self): return self._unid
+	def getMessages(self, room = None):
+		if room:
+			return list(filter(lambda x: x.room, self._msgs))
+		else:
+			return self._msgs
+	def getUnid(self, room): return self.getLastMessage(room).unid
+	def getRooms(self): return self._rooms
 	
 	name = property(getName)
-	level = property(getLevel)
 	sessionids = property(getSessionIds)
 	messages = property(getMessages)
-	unid = property(getUnid)
+	rooms = property(getRooms)
 	
 	####
 	# Helper methods
 	####
-	def getLastMessage(self):
+	def getLastMessage(self, room = None):
 		"""
 		Get the last sent message of this user.
 		
@@ -1145,13 +1155,16 @@ class _User:
 		@return: last message of user or none
 		"""
 		try:
-			return self.messages[-1]
+			if room:
+				return self.getMessages(room)[-1]
+			else:
+				return self.messages[-1]
 		except IndexError:
 			return None
 
-####
+################################################################
 # Message class
-####
+################################################################
 _msgs = dict()
 def Message(msgid, *args, **kw):
 	"""
@@ -1184,7 +1197,7 @@ class _Message:
 		@param msgid: message id
 		"""
 		if self._msgid == None:
-			_msgid = msgid
+			self._msgid = msgid
 			_msgs[msgid] = self
 	
 	def detach(self):
@@ -1196,13 +1209,15 @@ class _Message:
 	####
 	# Init, not __init__ this time!
 	####
-	def __init__(self, msgid, mtime = None, user = None, body = None):
+	def __init__(self, msgid, mtime = None, user = None, body = None, room = None):
 		self._msgid = msgid
 		self._time = mtime
 		self._user = user
 		self._body = body
+		self._room = room
 		self._raw = ""
 		self._ip = None
+		self._unid = ""
 		self._nameColor = "000"
 		self._fontSize = 12
 		self._fontFace = "0"
@@ -1220,15 +1235,19 @@ class _Message:
 	def getFontFace(self): return self._fontFace
 	def getFontSize(self): return self._fontSize
 	def getNameColor(self): return self._nameColor
+	def getRoom(self): return self._room
 	def getRaw(self): return self._raw
+	def getUnid(self): return self._unid
 	
 	msgid = property(getId)
 	time = property(getTime)
 	user = property(getUser)
 	body = property(getBody)
+	room = property(getRoom)
 	ip = property(getIP)
 	fontColor = property(getFontColor)
 	fontFace = property(getFontFace)
 	fontSize = property(getFontSize)
 	raw = property(getRaw)
 	nameColor = property(getNameColor)
+	unid = property(getUnid)

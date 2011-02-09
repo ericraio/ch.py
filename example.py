@@ -43,6 +43,8 @@ class Test(ch.RoomConnection):
 					self.setTimeout(int(args), self.message, ":D")
 				elif cmd == "ival":
 					self.setInterval(int(args), self.message, ":D")
+				elif cmd == "mylvl":
+					self.message("Your mod level: %i" %(user.getLevel(self)))
 	
 	def onFloodWarning(self):
 		self.reconnect()
