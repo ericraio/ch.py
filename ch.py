@@ -3,7 +3,7 @@
 # Title: Chatango Library
 # Author: Lumirayz/Lumz <lumirayz@gmail.com>
 # Description:
-#  An event-based library for connecting to _ONE_ Chatango room, has
+#  An event-based library for connecting to one or multiple Chatango rooms, has
 #  support for several things including: messaging, message font,
 #  name color, deleting, banning, recent history, 2 userlist modes,
 #  flagging, avoiding flood bans, detecting flags.
@@ -197,14 +197,15 @@ class RoomConnection:
 	####
 	# Init
 	####
-	def __init__(self, room, name = None, password = None, uid = None, server = None, port = None):
+	def __init__(self, room, name = None, password = None, uid = None, server = None, port = None, mgr = None):
 		self._room = room
 		self._server = server or getServer(room)
 		self._port = port or 443
 		self._uid = uid or genUid()
 		self._aid = "0000"
-		self._rbuf = b""
 		self._updateAnonName()
+		self._mgr = mgr
+		self._rbuf = b""
 		self._name_req = name
 		self._password_req = password
 		self._user = None
@@ -226,7 +227,8 @@ class RoomConnection:
 		self._mrec = False
 		self._premium = False
 		self._userCount = 0
-		self._connect()
+		self._pingTask = None
+		if self._mgr: self._connect()
 	
 	####
 	# Connect/disconnect
@@ -237,6 +239,7 @@ class RoomConnection:
 		self._sock.connect((self._server, self._port))
 		self._firstCommand = True
 		self._auth()
+		self._pingTask = self.setInterval(self._pingDelay, self.ping)
 		if not self._reconnecting: self.connected = True
 	
 	def reconnect(self):
@@ -256,6 +259,7 @@ class RoomConnection:
 	
 	def disconnect(self):
 		self._disconnect()
+		self._pingTask.cancel()
 		self.onDisconnect()
 	
 	def _disconnect(self):
@@ -281,6 +285,7 @@ class RoomConnection:
 			return self._anonName
 		else:
 			return self._name
+	def getManager(self): return self._mgr
 	def getRoom(self): return self._room
 	def getUserlist(self, mode = None, unique = None, memory = None):
 		ul = None
@@ -313,6 +318,7 @@ class RoomConnection:
 	def getUserCount(self): return self._userCount
 	
 	name = property(getName)
+	mgr = property(getManager)
 	room = property(getRoom)
 	userlist = property(getUserlist)
 	usernames = property(getUserNames)
@@ -440,7 +446,9 @@ class RoomConnection:
 	def main(self):
 		"""Main loop, continuously feeds data automatically."""
 		mgr = RoomManager(self._name_req, self._password_req)
+		self._mgr = mgr
 		mgr._rooms[self._room] = self
+		self._connect()
 		mgr.main()
 	
 	def _feed(self, data):
@@ -849,6 +857,10 @@ class RoomConnection:
 			terminator = b"\r\n\x00"
 		self._sock.send(":".join(args).encode() + terminator)
 	
+	# Proxy methods...
+	def setTimeout(self, *args, **kw): return self.mgr.setTimeout(*args, **kw)
+	def setInterval(self, *args, **kw): return self.mgr.setInterval(*args, **kw)
+	
 	####
 	# History
 	####
@@ -887,6 +899,7 @@ class RoomManager:
 	# Config
 	####
 	_RoomConnection = RoomConnection
+	_TimerResolution = 0.2 #at least x times per second
 	
 	####
 	# Init
@@ -894,6 +907,7 @@ class RoomManager:
 	def __init__(self, name = None, password = None):
 		self._name = name
 		self._password = password
+		self._tasks = set()
 		self._rooms = dict()
 	
 	####
@@ -911,8 +925,7 @@ class RoomManager:
 		"""
 		room = room.lower()
 		if room not in self._rooms:
-			con = self._RoomConnection(room, self._name, self._password)
-			con.rbuf = b""
+			con = self._RoomConnection(room, self._name, self._password, mgr = self)
 			self._rooms[room] = con
 			return con
 		else:
@@ -961,12 +974,85 @@ class RoomManager:
 	connections = property(getConnections)
 	
 	####
+	# Scheduling
+	####
+	class _Task:
+		def cancel(self):
+			"""Sugar for removeTask."""
+			self.mgr.removeTask(self)
+	
+	def _tick(self):
+		now = time.time()
+		for task in set(self._tasks):
+			if task.target <= now:
+				task.func(*task.args, **task.kw)
+				if task.isInterval:
+					task.target = now + task.timeout
+				else:
+					self._tasks.remove(task)
+	
+	def setTimeout(self, timeout, func, *args, **kw):
+		"""
+		Call a function after at least timeout seconds with specified arguments.
+		
+		@type timeout: int
+		@param timeout: timeout
+		@type func: function
+		@param func: function to call
+		
+		@rtype: _Task
+		@return: object representing the task
+		"""
+		task = self._Task()
+		task.mgr = self
+		task.target = time.time() + timeout
+		task.timeout = timeout
+		task.func = func
+		task.isInterval = False
+		task.args = args
+		task.kw = kw
+		self._tasks.add(task)
+		return task
+	
+	def setInterval(self, timeout, func, *args, **kw):
+		"""
+		Call a function at least every timeout seconds with specified arguments.
+		
+		@type timeout: int
+		@param timeout: timeout
+		@type func: function
+		@param func: function to call
+		
+		@rtype: _Task
+		@return: object representing the task
+		"""
+		task = self._Task()
+		task.mgr = self
+		task.target = time.time() + timeout
+		task.timeout = timeout
+		task.func = func
+		task.isInterval = True
+		task.args = args
+		task.kw = kw
+		self._tasks.add(task)
+		return task
+	
+	def removeTask(self, task):
+		"""
+		Cancel a task.
+		
+		@type task: _Task
+		@param task: task to cancel
+		"""
+		self._tasks.remove(task)
+	
+	####
 	# Main
 	####
 	def main(self):
 		while True:
 			socks = list(map(lambda x: x._sock, self.connections))
-			rd, wr, sp = select.select(socks, [], [])
+			rd, wr, sp = select.select(socks, [], [], self._TimerResolution)
 			for sock in rd:
 				con = list(filter(lambda x: x._sock == sock, self.connections))[0]
 				try:
@@ -978,6 +1064,7 @@ class RoomManager:
 						con.disconnect()
 				except socket.error:
 					pass
+			self._tick()
 	
 	@classmethod
 	def easy_start(cl, rooms = None, name = None, password = None):
