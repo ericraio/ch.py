@@ -4,7 +4,7 @@ Ch.py
 Description
 -----------
 An event-based library for connecting to one or multiple Chatango rooms, has support for several things including: messaging, message font, name color, deleting, banning, recent history, 2 userlist modes, flagging, avoiding flood bans, detecting flags.
-Event-based does not mean that this is asynchronous, though, it still uses a thread for the ping loop, but that shouldn't cause much overhead... I hope.
+Is now fully asynchronous.
 
 Installation
 ------------

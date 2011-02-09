@@ -7,10 +7,6 @@
 #  support for several things including: messaging, message font,
 #  name color, deleting, banning, recent history, 2 userlist modes,
 #  flagging, avoiding flood bans, detecting flags.
-#
-#  Event-based does not mean that this is asynchronous, it still uses a
-#  thread for the ping loop, but that shouldn't cause much overhead...
-#  I hope.
 ####
 
 ####
