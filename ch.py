@@ -224,6 +224,7 @@ class RoomConnection:
 		self._premium = False
 		self._userCount = 0
 		self._pingTask = None
+		self.onInit()
 		if self._mgr: self._connect()
 	
 	####
@@ -257,6 +258,7 @@ class RoomConnection:
 		self._disconnect()
 		self._pingTask.cancel()
 		self.onDisconnect()
+		self.mgr.onRoomLeave(self)
 	
 	def _disconnect(self):
 		"""Disconnect from the server."""
@@ -328,6 +330,10 @@ class RoomConnection:
 	####
 	# Virtual methods
 	####
+	def onInit(self):
+		"""Called on init."""
+		pass
+	
 	def onConnect(self):
 		"""Called when connected to the room."""
 		pass
@@ -504,6 +510,7 @@ class RoomConnection:
 			self._sendCommand("getpremium", "1")
 			if self._firstConnect:
 				self.onConnect()
+				self.mgr.onRoomJoin(self)
 				self._firstConnect = False
 			else:
 				self.onReconnect()
@@ -980,6 +987,24 @@ class RoomManager:
 	####
 	def onInit(self):
 		"""Called on init."""
+		pass
+	
+	def onRoomJoin(self, room):
+		"""
+		Called when a room gets joined.
+		
+		@type room: RoomConnection
+		@param room: room
+		"""
+		pass
+	
+	def onRoomLeft(self, room):
+		"""
+		Called when a room gets left.
+		
+		@type room: RoomConnection
+		@param room: room
+		"""
 		pass
 	
 	####
