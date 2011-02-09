@@ -435,27 +435,13 @@ class RoomConnection:
 		pass
 	
 	####
-	# Ping
-	####
-	def _pingloop(self):
-		"""Ping loop, ran in a seprate thread."""
-		while self.connected:
-			self.ping()
-			time.sleep(self._pingDelay)
-	
-	####
 	# Main
 	####
 	def main(self):
 		"""Main loop, continuously feeds data automatically."""
-		threading._start_new_thread(self._pingloop, ()) #TODO: make asynchronous
-		while True:
-			try:
-				data = self._sock.recv(1024)
-			except socket.error:
-				self._disconnect()
-				self.onDisconnect()
-			self._feed(data)
+		mgr = RoomManager(self._name_req, self._password_req)
+		mgr._rooms[self._room] = self
+		mgr.main()
 	
 	def _feed(self, data):
 		"""
