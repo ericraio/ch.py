@@ -160,20 +160,6 @@ def getAnonId(n, ssid):
 	except ValueError:
 		return "NNNN"
 
-def getAnonN(aid, uid):
-	"""Gets the n tag number you should have to have a certain anon id."""
-	if aid == "NNNN": return "NNNN"
-	try:
-		res = list()
-		for c1, c2 in zip(list(map(lambda x: int(x), str(aid))), list(map(lambda x: int(x), uid[4:8]))):
-			var = c1 - c2
-			if var < 0:
-				var = 10 + var
-			res.append(str(var))
-		return "".join(res)
-	except ValueError:
-		return "0000"
-
 ################################################################
 # RoomConnection class
 ################################################################
@@ -194,39 +180,40 @@ class RoomConnection:
 	# Init
 	####
 	def __init__(self, room, name = None, password = None, uid = None, server = None, port = None, mgr = None):
+		# Basic stuff
 		self._room = room
 		self._server = server or getServer(room)
+		self._name = name
+		self._password = password
 		self._port = port or 443
-		self._uid = uid or genUid()
-		self._aid = "0000"
-		self._updateAnonName()
 		self._mgr = mgr
+		self._nameColor = "000"
+		self._fontColor = "000"
+		self._fontFace = "0"
+		self._fontSize = 12
+		
+		# Under the hood
+		self._connected = False
+		self._reconnecting = False
+		self._uid = uid or genUid()
 		self._rbuf = b""
-		self._name_req = name
-		self._password_req = password
 		self._user = None
 		self._owner = None
 		self._mods = set()
 		self._mqueue = dict()
 		self._history = list()
 		self._userlist = list()
-		self._loggedIn = False
-		self._nameColor = "000"
-		self._fontColor = "000"
-		self._fontFace = "0"
-		self._fontSize = 12
-		self._connected = False
-		self._reconnecting = False
 		self._firstCommand = True
-		self._firstConnect = True
+		self._connectAmmount = 0
 		self._mbg = False
 		self._mrec = False
 		self._premium = False
 		self._userCount = 0
 		self._pingTask = None
-		self._isAnon = False
 		self._users = dict()
 		self._msgs = dict()
+		
+		# Inited vars
 		self.onInit()
 		if self._mgr: self._connect()
 	
@@ -253,6 +240,8 @@ class RoomConnection:
 		if msgid not in self._msgs:
 			msg = Message(msgid = msgid, **kw)
 			self._msgs[msgid] = msg
+		else:
+			msg = self._msgs[msgid]
 		return msg
 	
 	####
@@ -276,8 +265,6 @@ class RoomConnection:
 		self._reconnecting = True
 		if self.connected:
 			self._disconnect()
-		self._name_req = self._name
-		self._password_req = self._password
 		self._uid = genUid()
 		self._connect()
 		self._reconnecting = False
@@ -295,22 +282,12 @@ class RoomConnection:
 	
 	def _auth(self):
 		"""Authenticate."""
-		if self._name_req:
-			if self._password_req:
-				self._sendCommand("bauth", self._room, self._uid, self._name_req, self._password_req)
-			else:
-				self._sendCommand("bauth", self._room, self._uid)
-		else:
-			self._sendCommand("bauth", self._room, self._uid)
+		self._sendCommand("bauth", self._room, self._uid, self._name, self._password)
 	
 	####
 	# Properties
 	####
-	def getName(self):
-		if self._isAnon:
-			return self._anonName
-		else:
-			return self._name
+	def getName(self): return self._name
 	def getManager(self): return self._mgr
 	def getRoom(self): return self._room
 	def getUserlist(self, mode = None, unique = None, memory = None):
@@ -379,11 +356,7 @@ class RoomConnection:
 		pass
 	
 	def onLoginFail(self):
-		"""Called when a prior login function call failed."""
-		pass
-	
-	def onLoginSuccess(self):
-		"""Called when a prior login function call succeeds."""
+		"""Called on login failure, disconnects after."""
 		pass
 	
 	def onFloodBan(self):
@@ -475,7 +448,7 @@ class RoomConnection:
 	####
 	def main(self):
 		"""Main loop, continuously feeds data automatically."""
-		mgr = RoomManager(self._name_req, self._password_req)
+		mgr = RoomManager(self._name, self._password)
 		self._mgr = mgr
 		mgr._rooms[self._room] = self
 		self._connect()
@@ -506,19 +479,9 @@ class RoomConnection:
 		data = data.split(":")
 		cmd, args = data[0], data[1:]
 		if   cmd == "ok":
-			if args[2] == "M": #succesful login
-				self._isAnon = False
-				self._loggedIn = True
-				self._name = self._name_req
-				self._password = self._password_req
-			else:
-				self._isAnon = True
-				self._loggedIn = False
-				self._name = None
-				self._password = None
-				self._updateAnonName()
-			del self._name_req
-			del self._password_req
+			if args[2] != "M": #unsuccesful login
+				self.onLoginFail()
+				self.disconnect()
 			self._owner = self.createUser(args[0])
 			self._owner._level = 2
 			self._uid = args[1]
@@ -536,12 +499,12 @@ class RoomConnection:
 			del self._i_log
 			self._sendCommand("g_participants", "start")
 			self._sendCommand("getpremium", "1")
-			if self._firstConnect:
+			if self._connectAmmount == 0:
 				self.onConnect()
 				self.mgr.onRoomJoin(self)
-				self._firstConnect = False
 			else:
 				self.onReconnect()
+			self._connectAmmount += 1
 		elif cmd == "premium":
 			if float(args[1]) > time.time():
 				self._premium = True
@@ -564,16 +527,8 @@ class RoomConnection:
 				self._mods.add(user)
 			self.onModChange()
 		elif cmd == "pwdok":
-			self._loggedIn = True
-			self._name = self._name_req
-			self._password = self._password_req
-			del self._name_req
-			del self._password_req
 			self._sendCommand("getpremium", "1")
-			self.onLoginSuccess()
 		elif cmd == "badlogin":
-			del self._name_req
-			del self._password_req
 			self.onLoginFail()
 		elif cmd == "tb":
 			self.onFloodBan()
@@ -729,6 +684,7 @@ class RoomConnection:
 	# Commands
 	####
 	def ping(self):
+		"""Send a ping."""
 		self._sendCommand("")
 		self.onPing()
 	
@@ -757,44 +713,9 @@ class RoomConnection:
 					msg = msg[self._maxLength:]
 					self.message(sect)
 			return
-		if self._loggedIn:
-			if not self._name.startswith("#"):
-				msg = "<n" + self._nameColor + "/>" + msg
-				msg = "<f x%0.2i%s=\"%s\">" %(self._fontSize, self._fontColor, self._fontFace) + msg
-		else:
-			msg = "<n" + getAnonN(self._aid, self._uid) + "/>" + msg
+		msg = "<n" + self._nameColor + "/>" + msg
+		msg = "<f x%0.2i%s=\"%s\">" %(self._fontSize, self._fontColor, self._fontFace) + msg
 		self.rawMessage(msg)
-	
-	def logout(self):
-		"""Log out."""
-		if self._loggedIn:
-			self._sendCommand("blogout")
-			self._loggedIn = False
-	
-	def setName(self, name):
-		"""
-		Set a temporary name.
-		
-		@type name: str
-		@param name: name
-		"""
-		if self._loggedIn:
-			self.logout()
-		self._sendCommand("blogin", name)
-	
-	def login(self, name, password):
-		"""Log in.
-		
-		@type name: str
-		@param name: user name
-		@type password: str
-		@param password: user password
-		"""
-		if self._loggedIn:
-			self.logout()
-		self._name_req = name
-		self._password_req = password
-		self._sendCommand("blogin", name, password)
 	
 	def flag(self, message):
 		"""
@@ -920,23 +841,6 @@ class RoomConnection:
 		@param msg: message
 		"""
 		self._history.append(msg)
-	
-	####
-	# Misc
-	####
-	def setAnonId(self, aid):
-		"""
-		Set anon Id.
-		
-		@type aid: str
-		@param aid: anon id, 4-char string of numbers
-		"""
-		self._aid = aid
-		self._updateAnonName()
-	
-	def _updateAnonName(self):
-		"""Update anon name."""
-		self._anonName = "!anon" + self._aid
 
 ################################################################
 # RoomManager class
@@ -1037,7 +941,7 @@ class RoomManager:
 		"""
 		pass
 	
-	def onRoomLeft(self, room):
+	def onRoomLeave(self, room):
 		"""
 		Called when a room gets left.
 		
