@@ -224,8 +224,36 @@ class RoomConnection:
 		self._premium = False
 		self._userCount = 0
 		self._pingTask = None
+		self._isAnon = False
+		self._users = dict()
+		self._msgs = dict()
 		self.onInit()
 		if self._mgr: self._connect()
+	
+	####
+	# User and Message management
+	####
+	def getUser(self, name):
+		name = name.lower()
+		return self._users.get(name, Nobody)
+	
+	def getMessage(self, mid):
+		return self._msgs.get(mid)
+	
+	def createUser(self, name, **kw):
+		name = name.lower()
+		if name not in self._users:
+			user = User(name, **kw)
+			self._users[name] = user
+		else:
+			user = self._users[name]
+		return user
+	
+	def createMessage(self, msgid, **kw):
+		if msgid not in self._msgs:
+			msg = Message(msgid = msgid, **kw)
+			self._msgs[msgid] = msg
+		return msg
 	
 	####
 	# Connect/disconnect
@@ -301,7 +329,7 @@ class RoomConnection:
 	def getUserNames(self):
 		ul = self.userlist
 		return list(map(lambda x: x.name, ul))
-	def getUser(self): return User(self.name)
+	def getSelfUser(self): return self.getUser(self.name)
 	def getLevel(self): return self.getUser().level
 	def getOwner(self): return self._owner
 	def getMods(self):
@@ -320,7 +348,7 @@ class RoomConnection:
 	room = property(getRoom)
 	userlist = property(getUserlist)
 	usernames = property(getUserNames)
-	user = property(getUser)
+	user = property(getSelfUser)
 	level = property(getLevel)
 	owner = property(getOwner)
 	mods = property(getMods)
@@ -491,13 +519,13 @@ class RoomConnection:
 				self._updateAnonName()
 			del self._name_req
 			del self._password_req
-			self._owner = User(args[0])
-			self._owner._levels[self] = 2
+			self._owner = self.createUser(args[0])
+			self._owner._level = 2
 			self._uid = args[1]
 			self._aid = args[1][4:8]
-			self._mods = set(map(lambda x: User(x), args[6].split(";")))
+			self._mods = set(map(lambda x: self.createUser(x), args[6].split(";")))
 			for mod in self._mods:
-				mod._levels[self] = 1
+				mod._level = 1
 			self._i_log = list()
 		elif cmd == "inited":
 			for msg in reversed(self._i_log):
@@ -526,13 +554,13 @@ class RoomConnection:
 			self.onConnectFail()
 		elif cmd == "mods":
 			modnames = args[0].split(";")
-			mods = set(map(lambda x: User(x), modnames))
-			premods = set(map(lambda x: User(x), self._mods))
+			mods = set(map(lambda x: self.createUser(x), modnames))
+			premods = set(map(lambda x: self.createUser(x), self._mods))
 			for user in mods - premods: #demodded
-				user._levels[self] = 0
+				user._level = 0
 				self._mods.remove(user)
 			for user in premods - mods: #modded
-				user._levels[self] = 1
+				user._level = 1
 				self._mods.add(user)
 			self.onModChange()
 		elif cmd == "pwdok":
@@ -549,8 +577,6 @@ class RoomConnection:
 			self.onLoginFail()
 		elif cmd == "tb":
 			self.onFloodBan()
-		elif cmd == "fw":
-			self.onFlagged()
 		elif cmd == "b":
 			mtime = float(args[0])
 			puid = args[3]
@@ -569,17 +595,22 @@ class RoomConnection:
 			i = args[5]
 			unid = args[4]
 			#Create an anonymous message and queue it because msgid is unknown.
-			msg = Message(None, mtime, User(name), msg, self)
-			msg._ip = ip
-			msg._unid = unid
-			msg._nameColor = nameColor
-			msg._raw = rawmsg
+			msg = Message(
+				time = mtime,
+				user = self.createUser(name),
+				body = msg,
+				raw = rawmsg,
+				ip = ip,
+				nameColor = nameColor,
+				unid = unid,
+				room = self
+			)
 			if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
 			self._mqueue[i] = msg
 		elif cmd == "u":
 			msg = self._mqueue[args[0]]
 			del self._mqueue[args[0]]
-			msg.attach(args[1])
+			msg.attach(self, args[1])
 			msg.user._msgs.append(msg)
 			self._addHistory(msg)
 			self.onMessage(msg.user, msg)
@@ -599,12 +630,18 @@ class RoomConnection:
 					name = "!anon" + getAnonId(n, puid)
 			else:
 				nameColor = parseNameColor(n)
-			msg = Message(msgid, mtime, User(name), msg, self)
+			msg = self.createMessage(
+				msgid = msgid,
+				time = mtime,
+				user = self.createUser(name),
+				body = msg,
+				raw = rawmsg,
+				ip = args[6],
+				unid = args[4],
+				nameColor = nameColor,
+				room = self
+			)
 			if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
-			msg._ip = args[6]
-			msg._nameColor = nameColor
-			msg._unid = args[4]
-			msg._raw = rawmsg
 			self._i_log.append(msg)
 		elif cmd == "g_participants":
 			args = ":".join(args)
@@ -613,36 +650,36 @@ class RoomConnection:
 				data = data.split(":")
 				name = data[3].lower()
 				if name == "none": continue
-				user = User(name)
-				user.jtime = float(data[1])
+				user = self.createUser(
+					name = name,
+					jtime = float(data[1]),
+					room = self
+				)
 				user._sids.add(data[0])
 				self._userlist.append(user)
-				if self not in user._rooms:
-					user._rooms.add(self)
 		elif cmd == "participant":
 			if args[0] == "0": #leave
 				name = args[3].lower()
 				if name == "none": return
-				user = User(name)
+				user = self.getUser(name)
 				user._sids.remove(args[1])
 				self._userlist.remove(user)
 				if user not in self._userlist or not self._userlistEventUnique:
 					self.onLeave(user)
-				if user not in self._userlist:
-					user._rooms.remove(self)
 			else: #join
 				name = args[3].lower()
 				if name == "none": return
-				user = User(name)
-				user.jtime = float(args[6])
+				user = self.createUser(
+					name = name,
+					jtime = float(args[6]),
+					room = self
+				)
 				user._sids.add(args[1])
 				if user not in self._userlist: doEvent = True
 				else: doEvent = False
 				self._userlist.append(user)
 				if doEvent or not self._userlistEventUnique:
 					self.onJoin(user)
-				if doEvent:
-					user._rooms.add(self)
 		elif cmd == "show_fw": #flood warning
 			self.onFloodWarning()
 		elif cmd == "show_tb": #timedban, first
@@ -650,18 +687,20 @@ class RoomConnection:
 		elif cmd == "tb": #timedban, repeat
 			self.onFloodBanRepeat()
 		elif cmd == "delete":
-			msg = Message(args[0])
-			self._history.remove(msg)
-			msg.user._msgs.remove(msg)
-			self.onMessageDelete(msg.user, msg)
-			msg.detach()
-		elif cmd == "deleteall":
-			for msgid in args:
-				msg = Message(msgid)
+			msg = self.getMessage(args[0])
+			if msg:
 				self._history.remove(msg)
 				msg.user._msgs.remove(msg)
 				self.onMessageDelete(msg.user, msg)
 				msg.detach()
+		elif cmd == "deleteall":
+			for msgid in args:
+				msg = self.getMessage(msgid)
+				if msg:
+					self._history.remove(msg)
+					msg.user._msgs.remove(msg)
+					self.onMessageDelete(msg.user, msg)
+					msg.detach()
 		elif cmd == "n":
 			self._userCount = int(args[0], 16)
 			self.onUserCountChange()
@@ -1126,61 +1165,42 @@ class RoomManager:
 ################################################################
 # User class
 ################################################################
-_users = dict()
-def User(name):
-	"""
-	Create a User with a name or return a User with that name.
-	If name is None, returns User("!anon").
-	
-	@type name: str
-	@param name: the name
-	
-	@rtype: User
-	@return: the User object
-	"""
-	if name == None: name = "!anon"
-	name = name.lower()
-	user = _users.get(name)
-	if not user:
-		user = _User(name)
-		_users[name] = user
-	return user
-
-class _User:
+class User:
 	"""Class that represents a user."""
 	####
 	# Init
 	####
-	def __init__(self, name):
+	def __init__(self, name, **kw):
 		self._name = name.lower()
-		self._levels = dict()
+		self._level = 0
 		self._sids = set()
-		self._rooms = set()
+		self._room = None
 		self._msgs = list()
+		for attr, val in kw.items():
+			setattr(self, "_" + attr, val)
 	
 	####
 	# Properties
 	####
 	def getName(self): return self._name
-	def getLevel(self, room): return self._levels.get(room) or 0
+	def getLevel(self): return self._level
 	def getSessionIds(self): return self._sids
-	def getMessages(self, room = None):
-		if room:
-			return list(filter(lambda x: x.room, self._msgs))
-		else:
-			return self._msgs
-	def getUnid(self, room): return self.getLastMessage(room).unid
-	def getRooms(self): return self._rooms
+	def getMessages(self):
+		return self._msgs
+	def getUnid(self): return self.getLastMessage().unid
+	def getRoom(self): return self._room
 	
 	name = property(getName)
 	sessionids = property(getSessionIds)
 	messages = property(getMessages)
-	rooms = property(getRooms)
+	unid = property(getUnid)
+	level = property(getLevel)
+	room = property(getRoom)
 	
 	####
 	# Helper methods
 	####
-	def getLastMessage(self, room = None):
+	def getLastMessage(self):
 		"""
 		Get the last sent message of this user.
 		
@@ -1188,41 +1208,27 @@ class _User:
 		@return: last message of user or none
 		"""
 		try:
-			if room:
-				return self.getMessages(room)[-1]
-			else:
-				return self.messages[-1]
+			return self.messages[-1]
 		except IndexError:
 			return None
+
+####
+# Nobody
+####
+Nobody = User(
+	name = "!nobody",
+	level = 0
+)
 
 ################################################################
 # Message class
 ################################################################
-_msgs = dict()
-def Message(msgid, *args, **kw):
-	"""
-	Create a Message with an msgid or return a Message with that msgid.
-	If msgid is None, returns an anonymous message.
-	
-	@type msgid: str
-	@param msgid: the message id
-	
-	@rtype: Message
-	@return: the Message object
-	"""
-	if msgid == None: return _Message(None, *args, **kw)
-	msg = _msgs.get(msgid)
-	if not msg:
-		msg = _Message(msgid, *args, **kw)
-		_msgs[msgid] = msg
-	return msg
-
-class _Message:
+class Message:
 	"""Class that represents a message."""
 	####
 	# Attach/detach
 	####
-	def attach(self, msgid):
+	def attach(self, room, msgid):
 		"""
 		Attach the Message to a message id.
 		
@@ -1230,24 +1236,25 @@ class _Message:
 		@param msgid: message id
 		"""
 		if self._msgid == None:
+			self._room = room
 			self._msgid = msgid
-			_msgs[msgid] = self
+			self._room._msgs[msgid] = self
 	
 	def detach(self):
 		"""Detach the Message."""
 		if self._msgid != None:
-			del _msgs[self._msgid]
+			del self._room._msgs[self._msgid]
 			self._msgid = None
 	
 	####
 	# Init, not __init__ this time!
 	####
-	def __init__(self, msgid, mtime = None, user = None, body = None, room = None):
-		self._msgid = msgid
-		self._time = mtime
-		self._user = user
-		self._body = body
-		self._room = room
+	def __init__(self, **kw):
+		self._msgid = None
+		self._time = None
+		self._user = None
+		self._body = None
+		self._room = None
 		self._raw = ""
 		self._ip = None
 		self._unid = ""
@@ -1255,6 +1262,8 @@ class _Message:
 		self._fontSize = 12
 		self._fontFace = "0"
 		self._fontColor = "000"
+		for attr, val in kw.items():
+			setattr(self, "_" + attr, val)
 	
 	####
 	# Properties
