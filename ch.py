@@ -478,187 +478,197 @@ class RoomConnection:
 		self.onRaw(data)
 		data = data.split(":")
 		cmd, args = data[0], data[1:]
-		if   cmd == "ok":
-			if args[2] != "M": #unsuccesful login
-				self.onLoginFail()
-				self.disconnect()
-			self._owner = self.createUser(args[0])
-			self._owner._level = 2
-			self._uid = args[1]
-			self._aid = args[1][4:8]
-			self._mods = set(map(lambda x: self.createUser(x), args[6].split(";")))
-			for mod in self._mods:
-				mod._level = 1
-			self._i_log = list()
-		elif cmd == "inited":
-			for msg in reversed(self._i_log):
-				user = msg._user
-				user._msgs.append(msg)
-				self.onHistoryMessage(user, msg)
-				self._addHistory(msg)
-			del self._i_log
-			self._sendCommand("g_participants", "start")
-			self._sendCommand("getpremium", "1")
-			if self._connectAmmount == 0:
-				self.onConnect()
-				self.mgr.onRoomJoin(self)
-			else:
-				self.onReconnect()
-			self._connectAmmount += 1
-		elif cmd == "premium":
-			if float(args[1]) > time.time():
-				self._premium = True
-				if self._mbg: self.enableBg()
-				if self._mrec: self.enableRecording()
-			else:
-				self._premium = False
-		elif cmd == "denied":
-			self._disconnect()
-			self.onConnectFail()
-		elif cmd == "mods":
-			modnames = args[0].split(";")
-			mods = set(map(lambda x: self.createUser(x), modnames))
-			premods = set(map(lambda x: self.createUser(x), self._mods))
-			for user in mods - premods: #demodded
-				user._level = 0
-				self._mods.remove(user)
-			for user in premods - mods: #modded
-				user._level = 1
-				self._mods.add(user)
-			self.onModChange()
-		elif cmd == "pwdok":
-			self._sendCommand("getpremium", "1")
-		elif cmd == "badlogin":
+		func = "rcmd_" + cmd
+		if hasattr(self, func):
+			getattr(self, func)(args)
+	
+	####
+	# Received Commands
+	####
+	def rcmd_ok(self, args):
+		if args[2] != "M": #unsuccesful login
 			self.onLoginFail()
-		elif cmd == "tb":
-			self.onFloodBan()
-		elif cmd == "b":
-			mtime = float(args[0])
-			puid = args[3]
-			ip = args[6]
-			name = args[1]
-			rawmsg = ":".join(args[8:])
-			msg, n, f = clean_message(rawmsg)
-			if name == "":
-				nameColor = "000"
-				name = "#" + args[2]
-				if name == "#":
-					name = "!anon" + getAnonId(n, puid)
-			else:
-				if n: nameColor = parseNameColor(n)
-				else: nameColor = "000"
-			i = args[5]
-			unid = args[4]
-			#Create an anonymous message and queue it because msgid is unknown.
-			msg = Message(
-				time = mtime,
-				user = self.createUser(name),
-				body = msg,
-				raw = rawmsg,
-				ip = ip,
-				nameColor = nameColor,
-				unid = unid,
-				room = self
-			)
-			if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
-			self._mqueue[i] = msg
-		elif cmd == "u":
-			msg = self._mqueue[args[0]]
-			del self._mqueue[args[0]]
-			msg.attach(self, args[1])
-			msg.user._msgs.append(msg)
+			self.disconnect()
+		self._owner = self.createUser(args[0])
+		self._owner._level = 2
+		self._uid = args[1]
+		self._aid = args[1][4:8]
+		self._mods = set(map(lambda x: self.createUser(x), args[6].split(";")))
+		for mod in self._mods:
+			mod._level = 1
+		self._i_log = list()
+	
+	def rcmd_denied(self, args):
+		self._disconnect()
+		self.onConnectFail()
+	
+	def rcmd_inited(self, args):
+		for msg in reversed(self._i_log):
+			user = msg._user
+			user._msgs.append(msg)
+			self.onHistoryMessage(user, msg)
 			self._addHistory(msg)
-			self.onMessage(msg.user, msg)
-		elif cmd == "i":
-			mtime = float(args[0])
-			puid = args[3]
-			ip = args[6]
-			if ip == "": ip = None
-			name = args[1]
-			rawmsg = ":".join(args[8:])
-			msg, n, f = clean_message(rawmsg)
-			msgid = args[5]
-			if name == "":
-				nameColor = "000"
-				name = "#" + args[2]
-				if name == "#":
-					name = "!anon" + getAnonId(n, puid)
-			else:
-				nameColor = parseNameColor(n)
-			msg = self.createMessage(
-				msgid = msgid,
-				time = mtime,
-				user = self.createUser(name),
-				body = msg,
-				raw = rawmsg,
-				ip = args[6],
-				unid = args[4],
-				nameColor = nameColor,
+		del self._i_log
+		self._sendCommand("g_participants", "start")
+		self._sendCommand("getpremium", "1")
+		if self._connectAmmount == 0:
+			self.onConnect()
+			self.mgr.onRoomJoin(self)
+		else:
+			self.onReconnect()
+		self._connectAmmount += 1
+	
+	def rcmd_premium(self, args):
+		if float(args[1]) > time.time():
+			self._premium = True
+			if self._mbg: self.enableBg()
+			if self._mrec: self.enableRecording()
+		else:
+			self._premium = False
+	
+	def rcmd_mods(self, args):
+		modnames = args[0].split(";")
+		mods = set(map(lambda x: self.createUser(x), modnames))
+		premods = set(map(lambda x: self.createUser(x), self._mods))
+		for user in mods - premods: #demodded
+			user._level = 0
+			self._mods.remove(user)
+		for user in premods - mods: #modded
+			user._level = 1
+			self._mods.add(user)
+		self.onModChange()
+	
+	def rcmd_b(self, args):
+		mtime = float(args[0])
+		puid = args[3]
+		ip = args[6]
+		name = args[1]
+		rawmsg = ":".join(args[8:])
+		msg, n, f = clean_message(rawmsg)
+		if name == "":
+			nameColor = "000"
+			name = "#" + args[2]
+			if name == "#":
+				name = "!anon" + getAnonId(n, puid)
+		else:
+			if n: nameColor = parseNameColor(n)
+			else: nameColor = "000"
+		i = args[5]
+		unid = args[4]
+		#Create an anonymous message and queue it because msgid is unknown.
+		msg = Message(
+			time = mtime,
+			user = self.createUser(name),
+			body = msg,
+			raw = rawmsg,
+			ip = ip,
+			nameColor = nameColor,
+			unid = unid,
+			room = self
+		)
+		if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
+		self._mqueue[i] = msg
+	
+	def rcmd_u(self, args):
+		msg = self._mqueue[args[0]]
+		del self._mqueue[args[0]]
+		msg.attach(self, args[1])
+		msg.user._msgs.append(msg)
+		self._addHistory(msg)
+		self.onMessage(msg.user, msg)
+	
+	def rcmd_i(self, args):
+		mtime = float(args[0])
+		puid = args[3]
+		ip = args[6]
+		if ip == "": ip = None
+		name = args[1]
+		rawmsg = ":".join(args[8:])
+		msg, n, f = clean_message(rawmsg)
+		msgid = args[5]
+		if name == "":
+			nameColor = "000"
+			name = "#" + args[2]
+			if name == "#":
+				name = "!anon" + getAnonId(n, puid)
+		else:
+			nameColor = parseNameColor(n)
+		msg = self.createMessage(
+			msgid = msgid,
+			time = mtime,
+			user = self.createUser(name),
+			body = msg,
+			raw = rawmsg,
+			ip = args[6],
+			unid = args[4],
+			nameColor = nameColor,
+			room = self
+		)
+		if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
+		self._i_log.append(msg)
+	
+	def rcmd_g_participants(self, args):
+		args = ":".join(args)
+		args = args.split(";")
+		for data in args:
+			data = data.split(":")
+			name = data[3].lower()
+			if name == "none": continue
+			user = self.createUser(
+				name = name,
 				room = self
 			)
-			if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
-			self._i_log.append(msg)
-		elif cmd == "g_participants":
-			args = ":".join(args)
-			args = args.split(";")
-			for data in args:
-				data = data.split(":")
-				name = data[3].lower()
-				if name == "none": continue
-				user = self.createUser(
-					name = name,
-					jtime = float(data[1]),
-					room = self
-				)
+			if data[0] not in user._sids: #if they've REALLY joined
 				user._sids.add(data[0])
 				self._userlist.append(user)
-		elif cmd == "participant":
-			if args[0] == "0": #leave
-				name = args[3].lower()
-				if name == "none": return
-				user = self.getUser(name)
-				user._sids.remove(args[1])
-				self._userlist.remove(user)
-				if user not in self._userlist or not self._userlistEventUnique:
-					self.onLeave(user)
-			else: #join
-				name = args[3].lower()
-				if name == "none": return
-				user = self.createUser(
-					name = name,
-					jtime = float(args[6]),
-					room = self
-				)
-				user._sids.add(args[1])
-				if user not in self._userlist: doEvent = True
-				else: doEvent = False
-				self._userlist.append(user)
-				if doEvent or not self._userlistEventUnique:
-					self.onJoin(user)
-		elif cmd == "show_fw": #flood warning
-			self.onFloodWarning()
-		elif cmd == "show_tb": #timedban, first
-			self.onFloodBan()
-		elif cmd == "tb": #timedban, repeat
-			self.onFloodBanRepeat()
-		elif cmd == "delete":
-			msg = self.getMessage(args[0])
-			if msg:
-				self._history.remove(msg)
-				msg.user._msgs.remove(msg)
-				self.onMessageDelete(msg.user, msg)
-				msg.detach()
-		elif cmd == "deleteall":
-			for msgid in args:
-				msg = self.getMessage(msgid)
-				if msg:
-					self._history.remove(msg)
-					msg.user._msgs.remove(msg)
-					self.onMessageDelete(msg.user, msg)
-					msg.detach()
-		elif cmd == "n":
-			self._userCount = int(args[0], 16)
-			self.onUserCountChange()
+	
+	def rcmd_participant(self, args):
+		if args[0] == "0": #leave
+			name = args[3].lower()
+			if name == "none": return
+			user = self.getUser(name)
+			user._sids.remove(args[1])
+			self._userlist.remove(user)
+			if user not in self._userlist or not self._userlistEventUnique:
+				self.onLeave(user)
+		else: #join
+			name = args[3].lower()
+			if name == "none": return
+			user = self.createUser(
+				name = name,
+				room = self
+			)
+			user._sids.add(args[1])
+			if user not in self._userlist: doEvent = True
+			else: doEvent = False
+			self._userlist.append(user)
+			if doEvent or not self._userlistEventUnique:
+				self.onJoin(user)
+	
+	def rcmd_show_fw(self, args):
+		self.onFloodWarning()
+	
+	def rcmd_show_tb(self, args):
+		self.onFloodBan()
+	
+	def rcmd_tb(self, args):
+		self.onFloodBanRepeat()
+	
+	def rcmd_delete(self, args):
+		msg = self.getMessage(args[0])
+		if msg:
+			self._history.remove(msg)
+			msg.user._msgs.remove(msg)
+			self.onMessageDelete(msg.user, msg)
+			msg.detach()
+	
+	def rcmd_deleteall(self, args):
+		for msgid in args:
+			self.rcmd_delete([msgid])
+	
+	def rcmd_n(self, args):
+		self._userCount = int(args[0], 16)
+		self.onUserCountChange()
 	
 	@classmethod
 	def easy_start(cl, room = None, name = None, password = None):
