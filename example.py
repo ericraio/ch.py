@@ -46,14 +46,11 @@ class Test(ch.RoomConnection):
 				elif cmd == "mylvl":
 					self.message("Your mod level: %i" %(user.level))
 				elif cmd == "ismod":
-					user = self.getUser(args)
-					if user != ch.Nobody:
-						if user.level > 0:
-							self.message("yes")
-						else:
-							self.message("no")
+					user = ch.User(args)
+					if self.getLevel(user) > 0:
+						self.message("yes")
 					else:
-						self.message("unknown user")
+						self.message("no")
 	
 	def onFloodWarning(self):
 		self.reconnect()

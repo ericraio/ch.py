@@ -220,21 +220,8 @@ class RoomConnection:
 	####
 	# User and Message management
 	####
-	def getUser(self, name):
-		name = name.lower()
-		return self._users.get(name, Nobody)
-	
 	def getMessage(self, mid):
 		return self._msgs.get(mid)
-	
-	def createUser(self, name, **kw):
-		name = name.lower()
-		if name not in self._users:
-			user = User(name, **kw)
-			self._users[name] = user
-		else:
-			user = self._users[name]
-		return user
 	
 	def createMessage(self, msgid, **kw):
 		if msgid not in self._msgs:
@@ -306,8 +293,7 @@ class RoomConnection:
 	def getUserNames(self):
 		ul = self.userlist
 		return list(map(lambda x: x.name, ul))
-	def getSelfUser(self): return self.getUser(self.name)
-	def getLevel(self): return self.getUser().level
+	def getSelfUser(self): return User(self.name)
 	def getOwner(self): return self._owner
 	def getMods(self):
 		newset = set()
@@ -326,7 +312,6 @@ class RoomConnection:
 	userlist = property(getUserlist)
 	usernames = property(getUserNames)
 	user = property(getSelfUser)
-	level = property(getLevel)
 	owner = property(getOwner)
 	mods = property(getMods)
 	modnames = property(getModNames)
@@ -489,13 +474,10 @@ class RoomConnection:
 		if args[2] != "M": #unsuccesful login
 			self.onLoginFail()
 			self.disconnect()
-		self._owner = self.createUser(args[0])
-		self._owner._level = 2
+		self._owner = User(args[0])
 		self._uid = args[1]
 		self._aid = args[1][4:8]
-		self._mods = set(map(lambda x: self.createUser(x), args[6].split(";")))
-		for mod in self._mods:
-			mod._level = 1
+		self._mods = set(map(lambda x: User(x), args[6].split(";")))
 		self._i_log = list()
 	
 	def rcmd_denied(self, args):
@@ -504,8 +486,7 @@ class RoomConnection:
 	
 	def rcmd_inited(self, args):
 		for msg in reversed(self._i_log):
-			user = msg._user
-			user._msgs.append(msg)
+			user = msg.user
 			self.onHistoryMessage(user, msg)
 			self._addHistory(msg)
 		del self._i_log
@@ -528,13 +509,11 @@ class RoomConnection:
 	
 	def rcmd_mods(self, args):
 		modnames = args[0].split(";")
-		mods = set(map(lambda x: self.createUser(x), modnames))
-		premods = set(map(lambda x: self.createUser(x), self._mods))
+		mods = set(map(lambda x: User(x), modnames))
+		premods = set(map(lambda x: User(x), self._mods))
 		for user in mods - premods: #demodded
-			user._level = 0
 			self._mods.remove(user)
 		for user in premods - mods: #modded
-			user._level = 1
 			self._mods.add(user)
 		self.onModChange()
 	
@@ -558,7 +537,7 @@ class RoomConnection:
 		#Create an anonymous message and queue it because msgid is unknown.
 		msg = Message(
 			time = mtime,
-			user = self.createUser(name),
+			user = User(name),
 			body = msg,
 			raw = rawmsg,
 			ip = ip,
@@ -573,7 +552,6 @@ class RoomConnection:
 		msg = self._mqueue[args[0]]
 		del self._mqueue[args[0]]
 		msg.attach(self, args[1])
-		msg.user._msgs.append(msg)
 		self._addHistory(msg)
 		self.onMessage(msg.user, msg)
 	
@@ -596,7 +574,7 @@ class RoomConnection:
 		msg = self.createMessage(
 			msgid = msgid,
 			time = mtime,
-			user = self.createUser(name),
+			user = User(name),
 			body = msg,
 			raw = rawmsg,
 			ip = args[6],
@@ -614,19 +592,18 @@ class RoomConnection:
 			data = data.split(":")
 			name = data[3].lower()
 			if name == "none": continue
-			user = self.createUser(
+			user = User(
 				name = name,
 				room = self
 			)
-			if data[0] not in user._sids: #if they've REALLY joined
-				user._sids.add(data[0])
-				self._userlist.append(user)
+			user._sids.add(data[0])
+			self._userlist.append(user)
 	
 	def rcmd_participant(self, args):
 		if args[0] == "0": #leave
 			name = args[3].lower()
 			if name == "none": return
-			user = self.getUser(name)
+			user = User(name)
 			user._sids.remove(args[1])
 			self._userlist.remove(user)
 			if user not in self._userlist or not self._userlistEventUnique:
@@ -634,7 +611,7 @@ class RoomConnection:
 		else: #join
 			name = args[3].lower()
 			if name == "none": return
-			user = self.createUser(
+			user = User(
 				name = name,
 				room = self
 			)
@@ -658,7 +635,6 @@ class RoomConnection:
 		msg = self.getMessage(args[0])
 		if msg:
 			self._history.remove(msg)
-			msg.user._msgs.remove(msg)
 			self.onMessageDelete(msg.user, msg)
 			msg.detach()
 	
@@ -835,6 +811,29 @@ class RoomConnection:
 		else:
 			terminator = b"\r\n\x00"
 		self._sock.send(":".join(args).encode() + terminator)
+	
+	def getLevel(self, user):
+		if user == self._owner: return 2
+		if user in self._mods: return 1
+		return 0
+	
+	def getLastMessage(self, user = None):
+		if user:
+			try:
+				i = 1
+				while True:
+					msg = self._history[-i]
+					if msg.user == user:
+						return msg
+					i += 1
+			except IndexError:
+				return None
+		else:
+			try:
+				return self._history[-1]
+			except IndexError:
+				return None
+		return None
 	
 	# Proxy methods...
 	def setTimeout(self, *args, **kw): return self.mgr.setTimeout(*args, **kw)
@@ -1077,18 +1076,24 @@ class RoomManager:
 		self.main()
 
 ################################################################
-# User class
+# User class (well, yeah, i lied, it's actually _User)
 ################################################################
-class User:
+_users = dict()
+def User(name, *args, **kw):
+	user = _users.get(name)
+	if not user:
+		user = _User(name = name, *args, **kw)
+		_users[name] = user
+	return user
+
+class _User:
 	"""Class that represents a user."""
 	####
 	# Init
 	####
 	def __init__(self, name, **kw):
 		self._name = name.lower()
-		self._level = 0
 		self._sids = set()
-		self._room = None
 		self._msgs = list()
 		for attr, val in kw.items():
 			setattr(self, "_" + attr, val)
@@ -1097,42 +1102,12 @@ class User:
 	# Properties
 	####
 	def getName(self): return self._name
-	def getLevel(self): return self._level
 	def getSessionIds(self): return self._sids
-	def getMessages(self):
-		return self._msgs
 	def getUnid(self): return self.getLastMessage().unid
-	def getRoom(self): return self._room
 	
 	name = property(getName)
 	sessionids = property(getSessionIds)
-	messages = property(getMessages)
 	unid = property(getUnid)
-	level = property(getLevel)
-	room = property(getRoom)
-	
-	####
-	# Helper methods
-	####
-	def getLastMessage(self):
-		"""
-		Get the last sent message of this user.
-		
-		@rtype: msg
-		@return: last message of user or none
-		"""
-		try:
-			return self.messages[-1]
-		except IndexError:
-			return None
-
-####
-# Nobody
-####
-Nobody = User(
-	name = "!nobody",
-	level = 0
-)
 
 ################################################################
 # Message class
