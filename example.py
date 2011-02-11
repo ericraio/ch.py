@@ -1,24 +1,24 @@
 import ch
 import random
 
-class Test(ch.RoomConnection):
-	def onConnect(self):
+class TestBot(ch.RoomManager):
+	def onConnect(self, room):
 		print("Connected")
-		self.enableBg()
-		self.enableRecording()
-		self.setNameColor("F9F")
-		self.setFontColor("F33")
-		self.setFontFace("1")
-		self.setFontSize(10)
+		room.enableBg()
+		room.enableRecording()
+		room.setNameColor("F9F")
+		room.setFontColor("F33")
+		room.setFontFace("1")
+		room.setFontSize(10)
 	
-	def onReconnect(self):
+	def onReconnect(self, room):
 		print("Reconnected")
 	
-	def onDisconnect(self):
+	def onDisconnect(self, room):
 		print("Disconnected")
 	
-	def onMessage(self, user, message):
-		if self.getLevel(self.user) > 0:
+	def onMessage(self, room, user, message):
+		if room.getLevel(self.user) > 0:
 			print(user.name, message.ip, message.body)
 		else:
 			print(user.name, message.body)
@@ -30,35 +30,35 @@ class Test(ch.RoomConnection):
 			else:
 				cmd, args = data[0], ""
 			if   cmd == "delay":
-				self.setTimeout(int(args), self.message, ":D")
+				self.setTimeout(int(args), room.message, ":D")
 			elif cmd == "randomuser":
-				self.message(random.choice(self.usernames))
+				room.message(random.choice(room.usernames))
 			elif cmd == "ival":
-				self.setInterval(int(args), self.message, ":D")
+				self.setInterval(int(args), room.message, ":D")
 			elif cmd == "mylvl":
-				self.message("Your mod level: %i" %(self.getLevel(user)))
+				room.message("Your mod level: %i" %(room.getLevel(user)))
 			elif cmd == "mods":
-				self.message(", ".join(self.modnames + [self.ownername]))
+				room.message(", ".join(room.modnames + [room.ownername]))
 			elif cmd == "ismod":
 				user = ch.User(args)
-				if self.getLevel(user) > 0:
-					self.message("yes")
+				if room.getLevel(user) > 0:
+					room.message("yes")
 				else:
-					self.message("no")
+					room.message("no")
 	
-	def onFloodWarning(self):
-		self.reconnect()
+	def onFloodWarning(self, room):
+		room.reconnect()
 	
-	def onJoin(self, user):
-		self.message("hello, " + user.name + "!")
+	def onJoin(self, room, user):
+		room.message("hello, " + user.name + "!")
 	
-	def onLeave(self, user):
-		self.message("bye, " + user.name + "!")
+	def onLeave(self, room, user):
+		room.message("bye, " + user.name + "!")
 	
-	def onUserCountChange(self):
-		print("users: " + str(self.usercount))
+	def onUserCountChange(self, room):
+		print("users: " + str(room.usercount))
 	
-	def onMessageDelete(self, user, msg):
-		self.message("a message got deleted! " + user.name + ": " + msg.body)
+	def onMessageDelete(self, room, user, msg):
+		room.message("a message got deleted! " + user.name + ": " + msg.body)
 
-if __name__ == "__main__": Test.easy_start()
+if __name__ == "__main__": TestBot.easy_start()

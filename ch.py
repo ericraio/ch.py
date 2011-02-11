@@ -161,9 +161,9 @@ def getAnonId(n, ssid):
 		return "NNNN"
 
 ################################################################
-# RoomConnection class
+# Room class
 ################################################################
-class RoomConnection:
+class Room:
 	"""Manages a connection with a Chatango room."""
 	####
 	# Some settings
@@ -214,7 +214,6 @@ class RoomConnection:
 		self._msgs = dict()
 		
 		# Inited vars
-		self.onInit()
 		if self._mgr: self._connect()
 	
 	####
@@ -240,7 +239,7 @@ class RoomConnection:
 		self._sock.connect((self._server, self._port))
 		self._firstCommand = True
 		self._auth()
-		self._pingTask = self.setInterval(self._pingDelay, self.ping)
+		self._pingTask = self.mgr.setInterval(self._pingDelay, self.ping)
 		if not self._reconnecting: self.connected = True
 	
 	def reconnect(self):
@@ -259,12 +258,14 @@ class RoomConnection:
 	def disconnect(self):
 		self._disconnect()
 		self._pingTask.cancel()
-		self.onDisconnect()
-		self.mgr.onRoomLeave(self)
+		self.mgr.onDisconnect(self)
 	
 	def _disconnect(self):
 		"""Disconnect from the server."""
 		if not self._reconnecting: self.connected = False
+		for user in self._userlist:
+			user.clearSessionIds(self)
+		self._userlist = list()
 		self._sock.close()
 	
 	def _auth(self):
@@ -319,127 +320,8 @@ class RoomConnection:
 	usercount = property(getUserCount)
 	
 	####
-	# Virtual methods
+	# Feed/process
 	####
-	def onInit(self):
-		"""Called on init."""
-		pass
-	
-	def onConnect(self):
-		"""Called when connected to the room."""
-		pass
-	
-	def onReconnect(self):
-		"""Called when reconnected to the room."""
-		pass
-	
-	def onConnectFail(self):
-		"""Called when the connection failed."""
-		pass
-	
-	def onDisconnect(self):
-		"""Called when the client gets disconnected."""
-		pass
-	
-	def onLoginFail(self):
-		"""Called on login failure, disconnects after."""
-		pass
-	
-	def onFloodBan(self):
-		"""Called when either flood banned or flagged."""
-		pass
-	
-	def onFloodBanRepeat(self):
-		"""Called when trying to send something when floodbanned."""
-		pass
-	
-	def onFloodWarning(self):
-		"""Called when an overflow warning gets received."""
-		pass
-	
-	def onMessageDelete(self, user, message):
-		"""
-		Called when a message gets deleted.
-		
-		@type user: User
-		@param user: owner of deleted message
-		@type message: Message
-		@param message: message that got deleted
-		"""
-		pass
-	
-	def onModChange(self):
-		"""Called when the moderator list changes."""
-		pass
-	
-	def onMessage(self, user, message):
-		"""
-		Called when a message gets received.
-		
-		@type user: User
-		@param user: owner of message
-		@type message: Message
-		@param message: received message
-		"""
-		pass
-	
-	def onHistoryMessage(self, user, message):
-		"""
-		Called when a message gets received from history.
-		
-		@type user: User
-		@param user: owner of message
-		@type message: Message
-		@param message: the message that got added
-		"""
-		pass
-	
-	def onJoin(self, user):
-		"""
-		Called when a user joins. Anonymous users get ignored here.
-		
-		@type user: User
-		@param user: the user that has joined
-		"""
-		pass
-	
-	def onLeave(self, user):
-		"""
-		Called when a user leaves. Anonymous users get ignored here.
-		
-		@type user: User
-		@param user: the user that has left
-		"""
-		pass
-	
-	def onRaw(self, raw):
-		"""
-		Called before any command parsing occurs.
-		
-		@type raw: str
-		@param raw: raw command data
-		"""
-		pass
-	
-	def onPing(self):
-		"""Called when a ping gets sent."""
-		pass
-	
-	def onUserCountChange(self):
-		"""Called when the user count changes."""
-		pass
-	
-	####
-	# Main
-	####
-	def main(self):
-		"""Main loop, continuously feeds data automatically."""
-		mgr = RoomManager(self._name, self._password)
-		self._mgr = mgr
-		mgr._rooms[self._room] = self
-		self._connect()
-		mgr.main()
-	
 	def _feed(self, data):
 		"""
 		Feed data to the connection.
@@ -461,7 +343,7 @@ class RoomConnection:
 		@type data: str
 		@param data: the command string
 		"""
-		self.onRaw(data)
+		self.mgr.onRaw(self, data)
 		data = data.split(":")
 		cmd, args = data[0], data[1:]
 		func = "rcmd_" + cmd
@@ -488,16 +370,15 @@ class RoomConnection:
 	def rcmd_inited(self, args):
 		for msg in reversed(self._i_log):
 			user = msg.user
-			self.onHistoryMessage(user, msg)
+			self.mgr.onHistoryMessage(self, user, msg)
 			self._addHistory(msg)
 		del self._i_log
 		self._sendCommand("g_participants", "start")
 		self._sendCommand("getpremium", "1")
 		if self._connectAmmount == 0:
-			self.onConnect()
-			self.mgr.onRoomJoin(self)
+			self.mgr.onConnect(self)
 		else:
-			self.onReconnect()
+			self.mgr.onReconnect(self)
 		self._connectAmmount += 1
 	
 	def rcmd_premium(self, args):
@@ -554,7 +435,7 @@ class RoomConnection:
 		del self._mqueue[args[0]]
 		msg.attach(self, args[1])
 		self._addHistory(msg)
-		self.onMessage(msg.user, msg)
+		self.mgr.onMessage(self, msg.user, msg)
 	
 	def rcmd_i(self, args):
 		mtime = float(args[0])
@@ -589,9 +470,6 @@ class RoomConnection:
 	def rcmd_g_participants(self, args):
 		args = ":".join(args)
 		args = args.split(";")
-		for user in self._userlist:
-			user.clearSessionIds(self)
-		self._userlist = list()
 		for data in args:
 			data = data.split(":")
 			name = data[3].lower()
@@ -611,7 +489,7 @@ class RoomConnection:
 			user.removeSessionId(self, args[1])
 			self._userlist.remove(user)
 			if user not in self._userlist or not self._userlistEventUnique:
-				self.onLeave(user)
+				self.mgr.onLeave(self, user)
 		else: #join
 			name = args[3].lower()
 			if name == "none": return
@@ -624,22 +502,22 @@ class RoomConnection:
 			else: doEvent = False
 			self._userlist.append(user)
 			if doEvent or not self._userlistEventUnique:
-				self.onJoin(user)
+				self.mgr.onJoin(self, user)
 	
 	def rcmd_show_fw(self, args):
-		self.onFloodWarning()
+		self.mgr.onFloodWarning(self)
 	
 	def rcmd_show_tb(self, args):
-		self.onFloodBan()
+		self.mgr.onFloodBan(self)
 	
 	def rcmd_tb(self, args):
-		self.onFloodBanRepeat()
+		self.mgr.onFloodBanRepeat(self)
 	
 	def rcmd_delete(self, args):
 		msg = self.getMessage(args[0])
 		if msg:
 			self._history.remove(msg)
-			self.onMessageDelete(msg.user, msg)
+			self.mgr.onMessageDelete(self, msg.user, msg)
 			msg.detach()
 	
 	def rcmd_deleteall(self, args):
@@ -648,27 +526,7 @@ class RoomConnection:
 	
 	def rcmd_n(self, args):
 		self._userCount = int(args[0], 16)
-		self.onUserCountChange()
-	
-	@classmethod
-	def easy_start(cl, room = None, name = None, password = None):
-		"""
-		Prompts the user for missing info, then starts.
-		
-		@type room: str
-		@param room: room to join ("" = None, None = unspecified)
-		@type name: str
-		@param name: name to join as ("" = None, None = unspecified)
-		@type password: str
-		@param password: password to join with ("" = None, None = unspecified)
-		"""
-		if not room: room = str(input("Room name: "))
-		if not name: name = str(input("User name: "))
-		if name == "": name = None
-		if not password: password = str(input("User password: "))
-		if password == "": password = None
-		self = cl(room, name, password)
-		self.main()
+		self.mgr.onUserCountChange(self)
 	
 	####
 	# Commands
@@ -676,7 +534,7 @@ class RoomConnection:
 	def ping(self):
 		"""Send a ping."""
 		self._sendCommand("")
-		self.onPing()
+		self.mgr.onPing(self)
 	
 	def rawMessage(self, msg):
 		"""
@@ -839,10 +697,6 @@ class RoomConnection:
 				return None
 		return None
 	
-	# Proxy methods...
-	def setTimeout(self, *args, **kw): return self.mgr.setTimeout(*args, **kw)
-	def setInterval(self, *args, **kw): return self.mgr.setInterval(*args, **kw)
-	
 	####
 	# History
 	####
@@ -859,11 +713,11 @@ class RoomConnection:
 # RoomManager class
 ################################################################
 class RoomManager:
-	"""Class that manages multiple RoomConnections."""
+	"""Class that manages multiple Rooms."""
 	####
 	# Config
 	####
-	_RoomConnection = RoomConnection
+	_Room = Room
 	_TimerResolution = 0.2 #at least x times per second
 	
 	####
@@ -885,12 +739,12 @@ class RoomManager:
 		@type room: str
 		@param room: room to join
 		
-		@rtype: RoomConnection or None
+		@rtype: Room or None
 		@return: the room or nothing
 		"""
 		room = room.lower()
 		if room not in self._rooms:
-			con = self._RoomConnection(room, self._name, self._password, mgr = self)
+			con = self._Room(room, self._name, self._password, mgr = self)
 			self._rooms[room] = con
 			return con
 		else:
@@ -916,7 +770,7 @@ class RoomManager:
 		@type room: str
 		@param room: room
 		
-		@rtype: RoomConnection
+		@rtype: Room
 		@return: the room
 		"""
 		room = room.lower()
@@ -928,38 +782,193 @@ class RoomManager:
 	####
 	# Properties
 	####
+	def getUser(self): return User(self._name)
 	def getName(self): return self._name
 	def getPassword(self): return self._password
 	def getRooms(self): return set(self._rooms.keys())
 	def getConnections(self): return set(self._rooms.values())
 	
+	user = property(getUser)
 	name = property(getName)
 	password = property(getPassword)
 	rooms = property(getRooms)
 	connections = property(getConnections)
 	
 	####
-	# Virtual Methods
+	# Virtual methods
 	####
 	def onInit(self):
 		"""Called on init."""
 		pass
 	
-	def onRoomJoin(self, room):
+	def onConnect(self, room):
 		"""
-		Called when a room gets joined.
+		Called when connected to the room.
 		
-		@type room: RoomConnection
-		@param room: room
+		@type room: Room
+		@param room: room where the event occured
 		"""
 		pass
 	
-	def onRoomLeave(self, room):
+	def onReconnect(self, room):
 		"""
-		Called when a room gets left.
+		Called when reconnected to the room.
 		
-		@type room: RoomConnection
-		@param room: room
+		@type room: Room
+		@param room: room where the event occured
+		"""
+		pass
+	
+	def onConnectFail(self, room):
+		"""
+		Called when the connection failed.
+		
+		@type room: Room
+		@param room: room where the event occured
+		"""
+		pass
+	
+	def onDisconnect(self, room):
+		"""
+		Called when the client gets disconnected.
+		
+		@type room: Room
+		@param room: room where the event occured
+		"""
+		pass
+	
+	def onLoginFail(self, room):
+		"""
+		Called on login failure, disconnects after.
+		
+		@type room: Room
+		@param room: room where the event occured
+		"""
+		pass
+	
+	def onFloodBan(self, room):
+		"""
+		Called when either flood banned or flagged.
+		
+		@type room: Room
+		@param room: room where the event occured
+		"""
+		pass
+	
+	def onFloodBanRepeat(self, room):
+		"""
+		Called when trying to send something when floodbanned.
+		
+		@type room: Room
+		@param room: room where the event occured
+		"""
+		pass
+	
+	def onFloodWarning(self, room):
+		"""
+		Called when an overflow warning gets received.
+		
+		@type room: Room
+		@param room: room where the event occured
+		"""
+		pass
+	
+	def onMessageDelete(self, room, user, message):
+		"""
+		Called when a message gets deleted.
+		
+		@type room: Room
+		@param room: room where the event occured
+		@type user: User
+		@param user: owner of deleted message
+		@type message: Message
+		@param message: message that got deleted
+		"""
+		pass
+	
+	def onModChange(self, room):
+		"""
+		Called when the moderator list changes.
+		
+		@type room: Room
+		@param room: room where the event occured
+		"""
+		pass
+	
+	def onMessage(self, room, user, message):
+		"""
+		Called when a message gets received.
+		
+		@type room: Room
+		@param room: room where the event occured
+		@type user: User
+		@param user: owner of message
+		@type message: Message
+		@param message: received message
+		"""
+		pass
+	
+	def onHistoryMessage(self, room, user, message):
+		"""
+		Called when a message gets received from history.
+		
+		@type room: Room
+		@param room: room where the event occured
+		@type user: User
+		@param user: owner of message
+		@type message: Message
+		@param message: the message that got added
+		"""
+		pass
+	
+	def onJoin(self, room, user):
+		"""
+		Called when a user joins. Anonymous users get ignored here.
+		
+		@type room: Room
+		@param room: room where the event occured
+		@type user: User
+		@param user: the user that has joined
+		"""
+		pass
+	
+	def onLeave(self, room, user):
+		"""
+		Called when a user leaves. Anonymous users get ignored here.
+		
+		@type room: Room
+		@param room: room where the event occured
+		@type user: User
+		@param user: the user that has left
+		"""
+		pass
+	
+	def onRaw(self, room, raw):
+		"""
+		Called before any command parsing occurs.
+		
+		@type room: Room
+		@param room: room where the event occured
+		@type raw: str
+		@param raw: raw command data
+		"""
+		pass
+	
+	def onPing(self, room):
+		"""
+		Called when a ping gets sent.
+		
+		@type room: Room
+		@param room: room where the event occured
+		"""
+		pass
+	
+	def onUserCountChange(self, room):
+		"""
+		Called when the user count changes.
+		
+		@type room: Room
+		@param room: room where the event occured
 		"""
 		pass
 	
