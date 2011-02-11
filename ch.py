@@ -179,18 +179,12 @@ class Room:
 	####
 	# Init
 	####
-	def __init__(self, room, name = None, password = None, uid = None, server = None, port = None, mgr = None):
+	def __init__(self, room, uid = None, server = None, port = None, mgr = None):
 		# Basic stuff
-		self._room = room
+		self._name = room
 		self._server = server or getServer(room)
-		self._name = name
-		self._password = password
 		self._port = port or 443
 		self._mgr = mgr
-		self._nameColor = "000"
-		self._fontColor = "000"
-		self._fontFace = "0"
-		self._fontSize = 12
 		
 		# Under the hood
 		self._connected = False
@@ -198,7 +192,7 @@ class Room:
 		self._uid = uid or genUid()
 		self._rbuf = b""
 		self._wbuf = b""
-		self._user = None
+		self._wlockbuf = b""
 		self._owner = None
 		self._mods = set()
 		self._mqueue = dict()
@@ -206,13 +200,12 @@ class Room:
 		self._userlist = list()
 		self._firstCommand = True
 		self._connectAmmount = 0
-		self._mbg = False
-		self._mrec = False
 		self._premium = False
 		self._userCount = 0
 		self._pingTask = None
 		self._users = dict()
 		self._msgs = dict()
+		self._wlock = False
 		
 		# Inited vars
 		if self._mgr: self._connect()
@@ -273,14 +266,14 @@ class Room:
 	
 	def _auth(self):
 		"""Authenticate."""
-		self._sendCommand("bauth", self._room, self._uid, self._name, self._password)
+		self._sendCommand("bauth", self.name, self._uid, self.mgr.name, self.mgr.password)
+		self._setWriteLock(True)
 	
 	####
 	# Properties
 	####
 	def getName(self): return self._name
 	def getManager(self): return self._mgr
-	def getRoom(self): return self._room
 	def getUserlist(self, mode = None, unique = None, memory = None):
 		ul = None
 		if mode == None: mode = self._userlistMode
@@ -297,7 +290,7 @@ class Room:
 	def getUserNames(self):
 		ul = self.userlist
 		return list(map(lambda x: x.name, ul))
-	def getSelfUser(self): return User(self.name)
+	def getUser(self): return self.mgr.user
 	def getOwner(self): return self._owner
 	def getOwnerName(self): return self._owner.name
 	def getMods(self):
@@ -312,10 +305,9 @@ class Room:
 	
 	name = property(getName)
 	mgr = property(getManager)
-	room = property(getRoom)
 	userlist = property(getUserlist)
 	usernames = property(getUserNames)
-	user = property(getSelfUser)
+	user = property(getUser)
 	owner = property(getOwner)
 	ownername = property(getOwnerName)
 	mods = property(getMods)
@@ -383,12 +375,13 @@ class Room:
 		else:
 			self.mgr.onReconnect(self)
 		self._connectAmmount += 1
+		self._setWriteLock(False)
 	
 	def rcmd_premium(self, args):
 		if float(args[1]) > time.time():
 			self._premium = True
-			if self._mbg: self.enableBg()
-			if self._mrec: self.enableRecording()
+			if self.user._mbg: self.setBgMode(1)
+			if self.user._mrec: self.setRecordingMode(1)
 		else:
 			self._premium = False
 	
@@ -435,6 +428,11 @@ class Room:
 	
 	def rcmd_u(self, args):
 		msg = self._mqueue[args[0]]
+		if msg.user != self.user:
+			msg.user._fontColor = msg.fontColor
+			msg.user._fontFace = msg.fontFace
+			msg.user._fontSize = msg.fontSize
+			msg.user._nameColor = msg.nameColor
 		del self._mqueue[args[0]]
 		msg.attach(self, args[1])
 		self._addHistory(msg)
@@ -468,6 +466,11 @@ class Room:
 			room = self
 		)
 		if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
+		if msg.user != self.user:
+			msg.user._fontColor = msg.fontColor
+			msg.user._fontFace = msg.fontFace
+			msg.user._fontSize = msg.fontSize
+			msg.user._nameColor = msg.nameColor
 		self._i_log.append(msg)
 	
 	def rcmd_g_participants(self, args):
@@ -566,9 +569,15 @@ class Room:
 					msg = msg[self._maxLength:]
 					self.message(sect)
 			return
-		msg = "<n" + self._nameColor + "/>" + msg
-		msg = "<f x%0.2i%s=\"%s\">" %(self._fontSize, self._fontColor, self._fontFace) + msg
+		msg = "<n" + self.user.nameColor + "/>" + msg
+		msg = "<f x%0.2i%s=\"%s\">" %(self.user.fontSize, self.user.fontColor, self.user.fontFace) + msg
 		self.rawMessage(msg)
+	
+	def setBgMode(self, mode):
+		self._sendCommand("msgbg", str(mode))
+	
+	def setRecordingMode(self, mode):
+		self._sendCommand("msgmedia", str(mode))
 	
 	def flag(self, message):
 		"""
@@ -604,69 +613,20 @@ class Room:
 		if self.user.level > 0:
 			self._sendCommand("block", msg.unid, msg.ip, msg.user.name)
 	
-	def enableBg(self):
-		"""Enable background if available."""
-		self._mbg = True
-		self._sendCommand("msgbg", "1")
-	
-	def disableBg(self):
-		"""Disable background."""
-		self._mbg = False
-		self._sendCommand("msgbg", "0")
-	
-	def enableRecording(self):
-		"""Enable recording if available."""
-		self._mrec = True
-		self._sendCommand("msgmedia", "1")
-	
-	def disableRecording(self):
-		"""Disable recording."""
-		self._mrec = False
-		self._sendCommand("msgmedia", "0")
-	
-	def setNameColor(self, color3x):
-		"""
-		Set name color.
-		
-		@type color3x: str
-		@param color3x: a 3-char RGB hex code for the color
-		"""
-		self._nameColor = color3x
-	
-	def setFontColor(self, color3x):
-		"""
-		Set font color.
-		
-		@type color3x: str
-		@param color3x: a 3-char RGB hex code for the color
-		"""
-		self._fontColor = color3x
-	
-	def setFontFace(self, face):
-		"""
-		Set font face/family.
-		
-		@type face: str
-		@param face: the font face
-		"""
-		self._fontFace = face
-	
-	def setFontSize(self, size):
-		"""
-		Set font size.
-		
-		@type size: int
-		@param size: the font size (limited: 9 to 22)
-		"""
-		if size < 9: size = 9
-		if size > 22: size = 22
-		self._fontSize = size
-	
 	####
 	# Util
 	####
 	def _write(self, data):
-		self.mgr._write(self, data)
+		if self._wlock:
+			self._wlockbuf += data
+		else:
+			self.mgr._write(self, data)
+	
+	def _setWriteLock(self, lock):
+		self._wlock = lock
+		if self._wlock == False:
+			self._write(self._wlockbuf)
+			self._wlockbuf = b""
 	
 	def _sendCommand(self, *args):
 		"""
@@ -752,7 +712,7 @@ class RoomManager:
 		"""
 		room = room.lower()
 		if room not in self._rooms:
-			con = self._Room(room, self._name, self._password, mgr = self)
+			con = self._Room(room, mgr = self)
 			self._rooms[room] = con
 			return con
 		else:
@@ -793,14 +753,14 @@ class RoomManager:
 	def getUser(self): return User(self._name)
 	def getName(self): return self._name
 	def getPassword(self): return self._password
-	def getRooms(self): return set(self._rooms.keys())
-	def getConnections(self): return set(self._rooms.values())
+	def getRooms(self): return set(self._rooms.values())
+	def getRoomNames(self): return set(self._rooms.keys())
 	
 	user = property(getUser)
 	name = property(getName)
 	password = property(getPassword)
 	rooms = property(getRooms)
-	connections = property(getConnections)
+	roomnames = property(getRoomNames)
 	
 	####
 	# Virtual methods
@@ -1065,22 +1025,22 @@ class RoomManager:
 	def main(self):
 		self.onInit()
 		while True:
-			socks = [x._sock for x in self.connections]
-			wsocks = [x._sock for x in filter(lambda x: x._wbuf != b"", self.connections)]
+			socks = [x._sock for x in self.rooms]
+			wsocks = [x._sock for x in filter(lambda x: x._wbuf != b"", self.rooms)]
 			rd, wr, sp = select.select(socks, wsocks, [], self._TimerResolution)
 			for sock in rd:
-				con = list(filter(lambda x: x._sock == sock, self.connections))[0]
+				con = list(filter(lambda x: x._sock == sock, self.rooms))[0]
 				try:
 					data = sock.recv(1024)
 					if(len(data) > 0):
 						con._feed(data)
 					else:
-						del self._rooms[con.room]
+						del self._rooms[con.name]
 						con.disconnect()
 				except socket.error:
 					pass
 			for sock in wr:
-				con = list(filter(lambda x: x._sock == sock, self.connections))[0]
+				con = list(filter(lambda x: x._sock == sock, self.rooms))[0]
 				try:
 					size = sock.send(con._wbuf)
 					con._wbuf = con._wbuf[size:]
@@ -1109,6 +1069,71 @@ class RoomManager:
 		for room in rooms:
 			self.joinRoom(room)
 		self.main()
+	
+	####
+	# Commands
+	####
+	def enableBg(self):
+		"""Enable background if available."""
+		self.user._mbg = True
+		for room in self.rooms:
+			room.setBgMode(1)
+	
+	def disableBg(self):
+		"""Disable background."""
+		self.user._mbg = False
+		for room in self.rooms:
+			room.setBgMode(0)
+	
+	def enableRecording(self):
+		"""Enable recording if available."""
+		self.user._mrec = True
+		for room in self.rooms:
+			room.setRecordingMode(1)
+	
+	def disableRecording(self):
+		"""Disable recording."""
+		self.user._mrec = False
+		for room in self.rooms:
+			room.setRecordingMode(0)
+	
+	def setNameColor(self, color3x):
+		"""
+		Set name color.
+		
+		@type color3x: str
+		@param color3x: a 3-char RGB hex code for the color
+		"""
+		self.user._nameColor = color3x
+	
+	def setFontColor(self, color3x):
+		"""
+		Set font color.
+		
+		@type color3x: str
+		@param color3x: a 3-char RGB hex code for the color
+		"""
+		self.user._fontColor = color3x
+	
+	def setFontFace(self, face):
+		"""
+		Set font face/family.
+		
+		@type face: str
+		@param face: the font face
+		"""
+		self.user._fontFace = face
+	
+	def setFontSize(self, size):
+		"""
+		Set font size.
+		
+		@type size: int
+		@param size: the font size (limited: 9 to 22)
+		"""
+		if size < 9: size = 9
+		if size > 22: size = 22
+		self.user._fontSize = size
 
 ################################################################
 # User class (well, yeah, i lied, it's actually _User)
@@ -1130,6 +1155,10 @@ class _User:
 		self._name = name.lower()
 		self._sids = dict()
 		self._msgs = list()
+		self._nameColor = "000"
+		self._fontSize = 12
+		self._fontFace = "0"
+		self._fontColor = "000"
 		for attr, val in kw.items():
 			setattr(self, "_" + attr, val)
 	
@@ -1143,14 +1172,22 @@ class _User:
 		else:
 			return set.union(*self._sids.values())
 	def getRooms(self): return self._sids.keys()
-	def getRoomNames(self): return [room.room for room in self.getRooms()]
+	def getRoomNames(self): return [room.name for room in self.getRooms()]
 	def getUnid(self): return self.getLastMessage().unid
+	def getFontColor(self): return self._fontColor
+	def getFontFace(self): return self._fontFace
+	def getFontSize(self): return self._fontSize
+	def getNameColor(self): return self._nameColor
 	
 	name = property(getName)
 	sessionids = property(getSessionIds)
 	unid = property(getUnid)
 	rooms = property(getRooms)
 	roomnames = property(getRoomNames)
+	fontColor = property(getFontColor)
+	fontFace = property(getFontFace)
+	fontSize = property(getFontSize)
+	nameColor = property(getNameColor)
 	
 	####
 	# Util

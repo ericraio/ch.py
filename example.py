@@ -9,14 +9,16 @@ dancemoves = [
 ]
 
 class TestBot(ch.RoomManager):
+	def onInit(self):
+		self.setNameColor("F9F")
+		self.setFontColor("F33")
+		self.setFontFace("1")
+		self.setFontSize(10)
+		self.enableBg()
+		self.enableRecording()
+	
 	def onConnect(self, room):
 		print("Connected")
-		room.enableBg()
-		room.enableRecording()
-		room.setNameColor("F9F")
-		room.setFontColor("F33")
-		room.setFontFace("1")
-		room.setFontSize(10)
 	
 	def onReconnect(self, room):
 		print("Reconnected")
