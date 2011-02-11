@@ -197,6 +197,7 @@ class Room:
 		self._reconnecting = False
 		self._uid = uid or genUid()
 		self._rbuf = b""
+		self._wbuf = b""
 		self._user = None
 		self._owner = None
 		self._mods = set()
@@ -237,7 +238,9 @@ class Room:
 		"""Connect to the server."""
 		self._sock = socket.socket()
 		self._sock.connect((self._server, self._port))
+		self._sock.setblocking(False)
 		self._firstCommand = True
+		self._wbuf = b""
 		self._auth()
 		self._pingTask = self.mgr.setInterval(self._pingDelay, self.ping)
 		if not self._reconnecting: self.connected = True
@@ -660,6 +663,9 @@ class Room:
 	####
 	# Util
 	####
+	def _write(self, data):
+		self.mgr._write(self, data)
+	
 	def _sendCommand(self, *args):
 		"""
 		Send a command.
@@ -672,7 +678,7 @@ class Room:
 			self._firstCommand = False
 		else:
 			terminator = b"\r\n\x00"
-		self._sock.send(":".join(args).encode() + terminator)
+		self._write(":".join(args).encode() + terminator)
 	
 	def getLevel(self, user):
 		if user == self._owner: return 2
@@ -1046,13 +1052,20 @@ class RoomManager:
 		self._tasks.remove(task)
 	
 	####
+	# Util
+	####
+	def _write(self, room, data):
+		room._wbuf += data
+	
+	####
 	# Main
 	####
 	def main(self):
 		self.onInit()
 		while True:
-			socks = list(map(lambda x: x._sock, self.connections))
-			rd, wr, sp = select.select(socks, [], [], self._TimerResolution)
+			socks = [x._sock for x in self.connections]
+			wsocks = [x._sock for x in filter(lambda x: x._wbuf != b"", self.connections)]
+			rd, wr, sp = select.select(socks, wsocks, [], self._TimerResolution)
 			for sock in rd:
 				con = list(filter(lambda x: x._sock == sock, self.connections))[0]
 				try:
@@ -1062,6 +1075,13 @@ class RoomManager:
 					else:
 						del self._rooms[con.room]
 						con.disconnect()
+				except socket.error:
+					pass
+			for sock in wr:
+				con = list(filter(lambda x: x._sock == sock, self.connections))[0]
+				try:
+					size = sock.send(con._wbuf)
+					con._wbuf = con._wbuf[size:]
 				except socket.error:
 					pass
 			self._tick()
