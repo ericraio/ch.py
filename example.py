@@ -1,6 +1,13 @@
 import ch
 import random
 
+dancemoves = [
+	"(>^.^)>",
+	"(v^.^)v",
+	"v(^.^v)",
+	"<(^.^<)"
+]
+
 class TestBot(ch.RoomManager):
 	def onConnect(self, room):
 		print("Connected")
@@ -39,6 +46,9 @@ class TestBot(ch.RoomManager):
 				room.message("Your mod level: %i" %(room.getLevel(user)))
 			elif cmd == "mods":
 				room.message(", ".join(room.modnames + [room.ownername]))
+			elif cmd == "dance":
+				for i, msg in enumerate(dancemoves):
+					self.setTimeout(i / 2, room.message, msg)
 			elif cmd == "ismod":
 				user = ch.User(args)
 				if room.getLevel(user) > 0:

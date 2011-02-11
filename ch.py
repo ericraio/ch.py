@@ -548,13 +548,15 @@ class Room:
 		"""
 		self._sendCommand("bmsg", msg)
 	
-	def message(self, msg):
+	def message(self, msg, html = False):
 		"""
 		Send a message.
 		
 		@type msg: str
 		@param msg: message
 		"""
+		if not html:
+			msg = msg.replace("<", "&lt;").replace(">", "&gt;")
 		if len(msg) > self._maxLength:
 			if self._tooBigMessage == BigMessage_Cut:
 				self.message(msg[:self._maxLength])
