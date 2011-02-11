@@ -295,15 +295,15 @@ class RoomConnection:
 		return list(map(lambda x: x.name, ul))
 	def getSelfUser(self): return User(self.name)
 	def getOwner(self): return self._owner
+	def getOwnerName(self): return self._owner.name
 	def getMods(self):
 		newset = set()
 		for mod in self._mods:
 			newset.add(mod)
-		newset.add(self.getOwner())
 		return newset
 	def getModNames(self):
 		mods = self.getMods()
-		return list(map(lambda x: x.name, mods))
+		return [x.name for x in mods]
 	def getUserCount(self): return self._userCount
 	
 	name = property(getName)
@@ -313,6 +313,7 @@ class RoomConnection:
 	usernames = property(getUserNames)
 	user = property(getSelfUser)
 	owner = property(getOwner)
+	ownername = property(getOwnerName)
 	mods = property(getMods)
 	modnames = property(getModNames)
 	usercount = property(getUserCount)
