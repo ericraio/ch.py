@@ -25,6 +25,7 @@ import random
 import re
 import sys
 import select
+import threading
 
 ################################################################
 # Python 2 compatibility
@@ -252,6 +253,7 @@ class Room:
 		self._reconnecting = False
 	
 	def disconnect(self):
+		"""Disconnect."""
 		self._disconnect()
 		self._pingTask.cancel()
 		self.mgr.onDisconnect(self)
@@ -939,6 +941,25 @@ class RoomManager:
 		@param room: room where the event occured
 		"""
 		pass
+	
+	####
+	# Deferring
+	####
+	def deferToThread(self, callback, func, *args, **kw):
+		"""
+		Defer a function to a thread and callback the return value.
+		
+		@type callback: function
+		@param callback: function to call on completion
+		@type cbargs: tuple or list
+		@param cbargs: arguments to get supplied to the callback
+		@type func: function
+		@param func: function to call
+		"""
+		def f(func, callback, *args, **kw):
+			ret = func(*args, **kw)
+			self.setTimeout(0, callback, ret)
+		threading._start_new_thread(f, (func, callback) + args, kw)
 	
 	####
 	# Scheduling

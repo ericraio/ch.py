@@ -1,5 +1,11 @@
 import ch
 import random
+import sys
+import re
+if sys.version_info[0] > 2:
+	import urllib.request as urlreq
+else:
+	import urllib2 as urlreq
 
 dancemoves = [
 	"(>^.^)>",
@@ -51,6 +57,21 @@ class TestBot(ch.RoomManager):
 			elif cmd == "dance":
 				for i, msg in enumerate(dancemoves):
 					self.setTimeout(i / 2, room.message, msg)
+			elif cmd == "td":
+				word = args\
+					.replace(" ", "%20")\
+					.replace("&", "%26")\
+					.replace("%", "%25")\
+					.replace("<", "%3C")\
+					.replace("=", "%3D")
+				def rfinish(doc):
+					doc = doc.read().decode()
+					m = re.search("<h1>(.*?)</h1>\n(.*?)<BR><i>(.*)</i>", doc, re.DOTALL | re.IGNORECASE)
+					if m:
+						room.message(("<b>%s:</b> <i>%s</i> - %s" %(m.group(1), m.group(2), m.group(3))).replace("%20", " "), html = True)
+					else:
+						room.message("An error occured...")
+				self.deferToThread(rfinish, urlreq.urlopen, "http://thesurrealist.co.uk/slang.cgi?ref=" + word)
 			elif cmd == "ismod":
 				user = ch.User(args)
 				if room.getLevel(user) > 0:
