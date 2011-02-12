@@ -7,6 +7,8 @@ if sys.version_info[0] > 2:
 else:
 	import urllib2 as urlreq
 
+dictionary = dict() #volatile... of course...
+
 dancemoves = [
 	"(>^.^)>",
 	"(v^.^)v",
@@ -78,6 +80,20 @@ class TestBot(ch.RoomManager):
 					room.message("yes")
 				else:
 					room.message("no")
+			elif cmd == "define":
+				if args.find(":") != -1: #if there's a colon somewhere
+					word, definition = args.split(":", 1)
+					if word in dictionary:
+						room.message(word + ": already defined")
+					else:
+						dictionary[word] = definition
+						room.message(word + ": " + definition)
+				else:
+					word = args
+					if word in dictionary:
+						room.message(word + ": " + dictionary[word])
+					else:
+						room.message(word + ": not found")
 	
 	def onFloodWarning(self, room):
 		room.reconnect()
