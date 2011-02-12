@@ -597,12 +597,12 @@ class Room:
 		@type message: Message
 		@param message: message to delete
 		"""
-		if self.user.getLevel(self) > 0:
+		if self.getLevel(self.user) > 0:
 			self._sendCommand("delmsg", message.msgid)
 	
 	def clearall(self):
 		"""Clear all messages. (Owner only)"""
-		if self.user.getLevel(self) == 2:
+		if self.getLevel(self.user) == 2:
 			self._sendCommand("clearall")
 	
 	def ban(self, msg):
@@ -612,7 +612,7 @@ class Room:
 		@type message: Message
 		@param message: message to ban sender of
 		"""
-		if self.user.level > 0:
+		if self.getLevel(self.user) > 0:
 			self._sendCommand("block", msg.unid, msg.ip, msg.user.name)
 	
 	####
