@@ -167,17 +167,6 @@ def getAnonId(n, ssid):
 class Room:
 	"""Manages a connection with a Chatango room."""
 	####
-	# Some settings
-	####
-	_pingDelay = 20
-	_userlistMode = Userlist_Recent
-	_userlistUnique = True
-	_userlistMemory = 50
-	_userlistEventUnique = False
-	_tooBigMessage = BigMessage_Multiple
-	_maxLength = 800
-	
-	####
 	# Init
 	####
 	def __init__(self, room, uid = None, server = None, port = None, mgr = None):
@@ -236,7 +225,7 @@ class Room:
 		self._firstCommand = True
 		self._wbuf = b""
 		self._auth()
-		self._pingTask = self.mgr.setInterval(self._pingDelay, self.ping)
+		self._pingTask = self.mgr.setInterval(self.mgr._pingDelay, self.ping)
 		if not self._reconnecting: self.connected = True
 	
 	def reconnect(self):
@@ -278,9 +267,9 @@ class Room:
 	def getManager(self): return self._mgr
 	def getUserlist(self, mode = None, unique = None, memory = None):
 		ul = None
-		if mode == None: mode = self._userlistMode
-		if unique == None: unique = self._userlistUnique
-		if memory == None: memory = self._userlistMemory
+		if mode == None: mode = self.mgr._userlistMode
+		if unique == None: unique = self.mgr._userlistUnique
+		if memory == None: memory = self.mgr._userlistMemory
 		if mode == Userlist_Recent:
 			ul = map(lambda x: x.user, self._history[-memory:])
 		elif mode == Userlist_All:
@@ -496,7 +485,7 @@ class Room:
 			user = User(name)
 			user.removeSessionId(self, args[1])
 			self._userlist.remove(user)
-			if user not in self._userlist or not self._userlistEventUnique:
+			if user not in self._userlist or not self.mgr._userlistEventUnique:
 				self.mgr.onLeave(self, user)
 		else: #join
 			name = args[3].lower()
@@ -509,7 +498,7 @@ class Room:
 			if user not in self._userlist: doEvent = True
 			else: doEvent = False
 			self._userlist.append(user)
-			if doEvent or not self._userlistEventUnique:
+			if doEvent or not self.mgr._userlistEventUnique:
 				self.mgr.onJoin(self, user)
 	
 	def rcmd_show_fw(self, args):
@@ -562,13 +551,13 @@ class Room:
 		"""
 		if not html:
 			msg = msg.replace("<", "&lt;").replace(">", "&gt;")
-		if len(msg) > self._maxLength:
-			if self._tooBigMessage == BigMessage_Cut:
-				self.message(msg[:self._maxLength])
-			elif self._tooBigMessage == BigMessage_Multiple:
+		if len(msg) > self.mgr._maxLength:
+			if self.mgr._tooBigMessage == BigMessage_Cut:
+				self.message(msg[:self.mgr._maxLength])
+			elif self.mgr._tooBigMessage == BigMessage_Multiple:
 				while len(msg) > 0:
-					sect = msg[:self._maxLength]
-					msg = msg[self._maxLength:]
+					sect = msg[:self.mgr._maxLength]
+					msg = msg[self.mgr._maxLength:]
 					self.message(sect)
 			return
 		msg = "<n" + self.user.nameColor + "/>" + msg
@@ -678,6 +667,8 @@ class Room:
 		@param msg: message
 		"""
 		self._history.append(msg)
+		if len(self._history) > self.mgr._maxHistoryLength:
+			self._history = self._history[-self.mgr._maxHistoryLength:]
 
 ################################################################
 # RoomManager class
@@ -689,6 +680,14 @@ class RoomManager:
 	####
 	_Room = Room
 	_TimerResolution = 0.2 #at least x times per second
+	_pingDelay = 20
+	_userlistMode = Userlist_Recent
+	_userlistUnique = True
+	_userlistMemory = 50
+	_userlistEventUnique = False
+	_tooBigMessage = BigMessage_Multiple
+	_maxLength = 800
+	_maxHistoryLength = 150
 	
 	####
 	# Init
