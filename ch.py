@@ -731,7 +731,7 @@ class RoomManager:
 		if room in self._rooms:
 			con = self._rooms[room]
 			con._disconnect()
-			del rooms[room]
+			del self._rooms[room]
 	
 	def getRoom(self, room):
 		"""
