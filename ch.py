@@ -244,7 +244,6 @@ class Room:
 	def disconnect(self):
 		"""Disconnect."""
 		self._disconnect()
-		self._pingTask.cancel()
 		self.mgr.onDisconnect(self)
 	
 	def _disconnect(self):
@@ -253,7 +252,9 @@ class Room:
 		for user in self._userlist:
 			user.clearSessionIds(self)
 		self._userlist = list()
+		self._pingTask.cancel()
 		self._sock.close()
+		if not self._reconnecting: del self.mgr._rooms[self.name]
 	
 	def _auth(self):
 		"""Authenticate."""
