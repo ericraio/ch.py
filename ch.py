@@ -362,7 +362,7 @@ class Room:
 	
 	def rcmd_denied(self, args):
 		self._disconnect()
-		self.onConnectFail()
+		self.mgr.onConnectFail()
 	
 	def rcmd_inited(self, args):
 		for msg in reversed(self._i_log):
