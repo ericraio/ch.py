@@ -12,7 +12,7 @@ Installation
 
 Compatibility
 -------------
-Python 3 and Python 2.
+Python 3 and MAYBE Python 2.
 
 Examples
 --------
