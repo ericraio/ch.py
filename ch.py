@@ -513,9 +513,10 @@ class Room:
 	def rcmd_delete(self, args):
 		msg = self.getMessage(args[0])
 		if msg:
-			self._history.remove(msg)
-			self.mgr.onMessageDelete(self, msg.user, msg)
-			msg.detach()
+			if msg in self._history:
+				self._history.remove(msg)
+				self.mgr.onMessageDelete(self, msg.user, msg)
+				msg.detach()
 	
 	def rcmd_deleteall(self, args):
 		for msgid in args:
@@ -668,7 +669,8 @@ class Room:
 		"""
 		self._history.append(msg)
 		if len(self._history) > self.mgr._maxHistoryLength:
-			self._history = self._history[-self.mgr._maxHistoryLength:]
+			rest, self._history = self._history[:-self.mgr._maxHistoryLength], self._history[-self.mgr._maxHistoryLength:]
+			for msg in rest: msg.detach()
 
 ################################################################
 # RoomManager class
