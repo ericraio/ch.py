@@ -732,8 +732,7 @@ class RoomManager:
 		room = room.lower()
 		if room in self._rooms:
 			con = self._rooms[room]
-			con._disconnect()
-			del self._rooms[room]
+			con.disconnect()
 	
 	def getRoom(self, room):
 		"""
@@ -1265,7 +1264,7 @@ class Message:
 	
 	def detach(self):
 		"""Detach the Message."""
-		if self._msgid != None:
+		if self._msgid != None and self._msgid in self._room._msgs:
 			del self._room._msgs[self._msgid]
 			self._msgid = None
 	
