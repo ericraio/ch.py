@@ -385,7 +385,7 @@ class Room:
 			self._mods.remove(user)
 		for user in premods - mods: #modded
 			self._mods.add(user)
-		self.onModChange()
+		self.mgr.onModChange()
 	
 	def rcmd_b(self, args):
 		mtime = float(args[0])
