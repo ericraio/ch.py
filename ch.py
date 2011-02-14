@@ -380,7 +380,7 @@ class Room:
 	def rcmd_mods(self, args):
 		modnames = args[0].split(";")
 		mods = set(map(lambda x: User(x), modnames))
-		premods = set(map(lambda x: User(x), self._mods))
+		premods = self._mods
 		for user in mods - premods: #demodded
 			self._mods.remove(user)
 		for user in premods - mods: #modded
