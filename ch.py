@@ -244,7 +244,7 @@ class Room:
 	def disconnect(self):
 		"""Disconnect."""
 		self._disconnect()
-		self.mgr.onDisconnect(self)
+		self._callEvent("onDisconnect")
 	
 	def _disconnect(self):
 		"""Disconnect from the server."""
@@ -330,7 +330,7 @@ class Room:
 		@type data: str
 		@param data: the command string
 		"""
-		self.mgr.onRaw(self, data)
+		self._callEvent("onRaw", data)
 		data = data.split(":")
 		cmd, args = data[0], data[1:]
 		func = "rcmd_" + cmd
@@ -342,7 +342,7 @@ class Room:
 	####
 	def rcmd_ok(self, args):
 		if args[2] != "M": #unsuccesful login
-			self.onLoginFail()
+			self._callEvent("onLoginFail")
 			self.disconnect()
 		self._owner = User(args[0])
 		self._uid = args[1]
@@ -352,20 +352,20 @@ class Room:
 	
 	def rcmd_denied(self, args):
 		self._disconnect()
-		self.mgr.onConnectFail(self)
+		self._callEvent("onConnectFail")
 	
 	def rcmd_inited(self, args):
 		for msg in reversed(self._i_log):
 			user = msg.user
-			self.mgr.onHistoryMessage(self, user, msg)
+			self._callEvent("onHistoryMessage", user, msg)
 			self._addHistory(msg)
 		del self._i_log
 		self._sendCommand("g_participants", "start")
 		self._sendCommand("getpremium", "1")
 		if self._connectAmmount == 0:
-			self.mgr.onConnect(self)
+			self._callEvent("onConnect")
 		else:
-			self.mgr.onReconnect(self)
+			self._callEvent("onReconnect")
 		self._connectAmmount += 1
 		self._setWriteLock(False)
 	
@@ -385,7 +385,7 @@ class Room:
 			self._mods.remove(user)
 		for user in premods - mods: #modded
 			self._mods.add(user)
-		self.mgr.onModChange()
+		self._callEvent("onModChange")
 	
 	def rcmd_b(self, args):
 		mtime = float(args[0])
@@ -428,7 +428,7 @@ class Room:
 		del self._mqueue[args[0]]
 		msg.attach(self, args[1])
 		self._addHistory(msg)
-		self.mgr.onMessage(self, msg.user, msg)
+		self._callEvent("onMessage", msg.user, msg)
 	
 	def rcmd_i(self, args):
 		mtime = float(args[0])
@@ -487,7 +487,7 @@ class Room:
 			user.removeSessionId(self, args[1])
 			self._userlist.remove(user)
 			if user not in self._userlist or not self.mgr._userlistEventUnique:
-				self.mgr.onLeave(self, user)
+				self._callEvent("onLeave", user)
 		else: #join
 			name = args[3].lower()
 			if name == "none": return
@@ -500,23 +500,23 @@ class Room:
 			else: doEvent = False
 			self._userlist.append(user)
 			if doEvent or not self.mgr._userlistEventUnique:
-				self.mgr.onJoin(self, user)
+				self._callEvent("onJoin", user)
 	
 	def rcmd_show_fw(self, args):
-		self.mgr.onFloodWarning(self)
+		self._callEvent("onFloodWarning")
 	
 	def rcmd_show_tb(self, args):
-		self.mgr.onFloodBan(self)
+		self._callEvent("onFloodBan")
 	
 	def rcmd_tb(self, args):
-		self.mgr.onFloodBanRepeat(self)
+		self._callEvent("onFloodBanRepeat")
 	
 	def rcmd_delete(self, args):
 		msg = self.getMessage(args[0])
 		if msg:
 			if msg in self._history:
 				self._history.remove(msg)
-				self.mgr.onMessageDelete(self, msg.user, msg)
+				self._callEvent("onMessageDelete", msg.user, msg)
 				msg.detach()
 	
 	def rcmd_deleteall(self, args):
@@ -525,7 +525,7 @@ class Room:
 	
 	def rcmd_n(self, args):
 		self._userCount = int(args[0], 16)
-		self.mgr.onUserCountChange(self)
+		self._callEvent("onUserCountChange")
 	
 	####
 	# Commands
@@ -533,7 +533,7 @@ class Room:
 	def ping(self):
 		"""Send a ping."""
 		self._sendCommand("")
-		self.mgr.onPing(self)
+		self._callEvent("onPing")
 	
 	def rawMessage(self, msg):
 		"""
@@ -609,6 +609,10 @@ class Room:
 	####
 	# Util
 	####
+	def _callEvent(self, evt, *args, **kw):
+		getattr(self.mgr, evt)(self, *args, **kw)
+		self.mgr.onEventCalled(self, evt, *args, **kw)
+	
 	def _write(self, data):
 		if self._wlock:
 			self._wlockbuf += data
@@ -940,6 +944,17 @@ class RoomManager:
 		
 		@type room: Room
 		@param room: room where the event occured
+		"""
+		pass
+	
+	def onEventCalled(self, room, evt, *args, **kw):
+		"""
+		Called on every room-based event.
+		
+		@type room: Room
+		@param room: room where the event occured
+		@type evt: str
+		@param evt: the event
 		"""
 		pass
 	
