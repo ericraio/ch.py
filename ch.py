@@ -581,6 +581,22 @@ class Room:
 		"""
 		self._sendCommand("g_flag", message.msgid)
 	
+	def flagUser(self, user):
+		"""
+		Flag a user.
+		
+		@type user: User
+		@param user: user to flag
+		
+		@rtype: bool
+		@return: whether a message to flag was found
+		"""
+		msg = self.getLastMessage(user)
+		if msg:
+			self.flag(msg)
+			return True
+		return False
+	
 	def delete(self, message):
 		"""
 		Delete a message. (Moderator only)
@@ -593,15 +609,20 @@ class Room:
 	
 	def clearUser(self, user):
 		"""
-		Clear all of a user's messages.
+		Clear all of a user's messages. (Moderator only)
 		
 		@type user: User
 		@param user: user to delete messages of
+		
+		@rtype: bool
+		@return: whether a message to delete was found
 		"""
 		if self.getLevel(self.user) > 0:
 			msg = self.getLastMessage(user)
 			if msg:
 				self._sendCommand("delallmsg", msg.unid)
+			return True
+		return False
 	
 	def clearall(self):
 		"""Clear all messages. (Owner only)"""
@@ -617,6 +638,22 @@ class Room:
 		"""
 		if self.getLevel(self.user) > 0:
 			self._sendCommand("block", msg.unid, msg.ip, msg.user.name)
+	
+	def banUser(self, user):
+		"""
+		Ban a user. (Moderator only)
+		
+		@type user: User
+		@param user: user to ban
+		
+		@rtype: bool
+		@return: whether a message to ban the user was found
+		"""
+		msg = self.getLastMessage(user)
+		if msg:
+			self.ban(msg)
+			return True
+		return False
 	
 	####
 	# Util
