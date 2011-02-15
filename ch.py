@@ -196,6 +196,7 @@ class Room:
 		self._users = dict()
 		self._msgs = dict()
 		self._wlock = False
+		self._silent = False
 		
 		# Inited vars
 		if self._mgr: self._connect()
@@ -294,6 +295,8 @@ class Room:
 		mods = self.getMods()
 		return [x.name for x in mods]
 	def getUserCount(self): return self._userCount
+	def getSilent(self): return self._silent
+	def setSilent(self, val): self._silent = val
 	
 	name = property(getName)
 	mgr = property(getManager)
@@ -305,6 +308,7 @@ class Room:
 	mods = property(getMods)
 	modnames = property(getModNames)
 	usercount = property(getUserCount)
+	silent = property(getSilent, setSilent)
 	
 	####
 	# Feed/process
@@ -542,7 +546,8 @@ class Room:
 		@type msg: str
 		@param msg: message
 		"""
-		self._sendCommand("bmsg", msg)
+		if not self._silent:
+			self._sendCommand("bmsg", msg)
 	
 	def message(self, msg, html = False):
 		"""
