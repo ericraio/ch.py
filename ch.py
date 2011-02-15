@@ -591,6 +591,18 @@ class Room:
 		if self.getLevel(self.user) > 0:
 			self._sendCommand("delmsg", message.msgid)
 	
+	def clearUser(self, user):
+		"""
+		Clear all of a user's messages.
+		
+		@type user: User
+		@param user: user to delete messages of
+		"""
+		if self.getLevel(self.user) > 0:
+			msg = self.getLastMessage(user)
+			if msg:
+				self._sendCommand("delallmsg", msg.unid)
+	
 	def clearall(self):
 		"""Clear all messages. (Owner only)"""
 		if self.getLevel(self.user) == 2:
