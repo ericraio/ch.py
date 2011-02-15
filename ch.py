@@ -612,6 +612,9 @@ class Room:
 		if self.getLevel(self.user) > 0:
 			self._sendCommand("delmsg", message.msgid)
 	
+	def rawClearUser(self, unid):
+		self._sendCommand("delallmsg", unid)
+	
 	def clearUser(self, user):
 		"""
 		Clear all of a user's messages. (Moderator only)
@@ -625,7 +628,7 @@ class Room:
 		if self.getLevel(self.user) > 0:
 			msg = self.getLastMessage(user)
 			if msg:
-				self._sendCommand("delallmsg", msg.unid)
+				self.rawClearUser(user.unid)
 			return True
 		return False
 	
@@ -633,6 +636,20 @@ class Room:
 		"""Clear all messages. (Owner only)"""
 		if self.getLevel(self.user) == 2:
 			self._sendCommand("clearall")
+	
+	def rawBan(self, name, ip, unid):
+		"""
+		Execute the block command using specified arguments.
+		(For advanced usage)
+		
+		@type name: str
+		@param name: name
+		@type ip: str
+		@param ip: ip address
+		@type unid: str
+		@param unid: unid
+		"""
+		self._sendCommand("block", unid, ip, name)
 	
 	def ban(self, msg):
 		"""
@@ -642,7 +659,7 @@ class Room:
 		@param message: message to ban sender of
 		"""
 		if self.getLevel(self.user) > 0:
-			self._sendCommand("block", msg.unid, msg.ip, msg.user.name)
+			self.rawBan(msg.unid, msg.ip, msg.user.name)
 	
 	def banUser(self, user):
 		"""
@@ -659,6 +676,20 @@ class Room:
 			self.ban(msg)
 			return True
 		return False
+	
+	def rawUnban(self, name, ip, unid):
+		"""
+		Execute the unblock command using specified arguments.
+		(For advanced usage)
+		
+		@type name: str
+		@param name: name
+		@type ip: str
+		@param ip: ip address
+		@type unid: str
+		@param unid: unid
+		"""
+		self._sendCommand("unblock", unid, ip, name)
 	
 	####
 	# Util
