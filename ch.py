@@ -628,7 +628,7 @@ class Room:
 		if self.getLevel(self.user) > 0:
 			msg = self.getLastMessage(user)
 			if msg:
-				self.rawClearUser(user.unid)
+				self.rawClearUser(msg.unid)
 			return True
 		return False
 	
@@ -1296,7 +1296,6 @@ class _User:
 			return set.union(*self._sids.values())
 	def getRooms(self): return self._sids.keys()
 	def getRoomNames(self): return [room.name for room in self.getRooms()]
-	def getUnid(self): return self.getLastMessage().unid
 	def getFontColor(self): return self._fontColor
 	def getFontFace(self): return self._fontFace
 	def getFontSize(self): return self._fontSize
@@ -1304,7 +1303,6 @@ class _User:
 	
 	name = property(getName)
 	sessionids = property(getSessionIds)
-	unid = property(getUnid)
 	rooms = property(getRooms)
 	roomnames = property(getRoomNames)
 	fontColor = property(getFontColor)
