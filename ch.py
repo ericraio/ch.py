@@ -552,6 +552,7 @@ class Room:
 		self._callEvent("onBanlistUpdate")
 	
 	def rcmd_blocked(self, args):
+		if args[2] == "": return
 		target = User(args[2])
 		user = User(args[3])
 		self._banlist.append((args[0], args[1], target, float(args[4]), user))
@@ -559,6 +560,7 @@ class Room:
 		self.requestBanlist()
 	
 	def rcmd_unblocked(self, args):
+		if args[2] == "": return
 		target = User(args[2])
 		user = User(args[3])
 		self._callEvent("onUnban", user, target)
@@ -925,7 +927,7 @@ class RoomManager:
 		"""
 		Called when connected to the room.
 		
-		@type room: Room
+		@type room: Roomif args[2] == "": return
 		@param room: room where the event occured
 		"""
 		pass
