@@ -552,13 +552,16 @@ class Room:
 		self._callEvent("onBanlistUpdate")
 	
 	def rcmd_blocked(self, args):
-		user = User(args[2])
-		self._callEvent("onBan", user)
+		target = User(args[2])
+		user = User(args[3])
+		self._banlist.append((args[0], args[1], target, float(args[4]), user))
+		self._callEvent("onBan", user, target)
 		self.requestBanlist()
 	
 	def rcmd_unblocked(self, args):
-		user = User(args[2])
-		self._callEvent("onUnban", user)
+		target = User(args[2])
+		user = User(args[3])
+		self._callEvent("onUnban", user, target)
 		self.requestBanlist()
 	
 	####
@@ -1089,25 +1092,29 @@ class RoomManager:
 		"""
 		pass
 	
-	def onBan(self, room, user):
+	def onBan(self, room, user, target):
 		"""
 		Called when a user gets banned.
 		
 		@type room: Room
 		@param room: room where the event occured
 		@type user: User
-		@param user: user that got banned
+		@param user: user that banned someone
+		@type target: User
+		@param target: user that got banned
 		"""
 		pass
 	
-	def onUnban(self, room, user):
+	def onUnban(self, room, user, target):
 		"""
 		Called when a user gets unbanned.
 		
 		@type room: Room
 		@param room: room where the event occured
 		@type user: User
-		@param user: user that got unbanned
+		@param user: user that unbanned someone
+		@type target: User
+		@param target: user that got unbanned
 		"""
 		pass
 	
@@ -1428,6 +1435,12 @@ class _User:
 				return False
 		except KeyError:
 			return False
+	
+	####
+	# Repr
+	####
+	def __repr__(self):
+		return "<User: %s>" %(self.name)
 
 ################################################################
 # Message class
