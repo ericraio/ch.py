@@ -927,7 +927,7 @@ class RoomManager:
 		"""
 		Called when connected to the room.
 		
-		@type room: Roomif args[2] == "": return
+		@type room: Room
 		@param room: room where the event occured
 		"""
 		pass
