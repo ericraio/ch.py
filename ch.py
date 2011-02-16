@@ -197,6 +197,7 @@ class Room:
 		self._msgs = dict()
 		self._wlock = False
 		self._silent = False
+		self._banlist = list()
 		
 		# Inited vars
 		if self._mgr: self._connect()
@@ -297,7 +298,8 @@ class Room:
 	def getUserCount(self): return self._userCount
 	def getSilent(self): return self._silent
 	def setSilent(self, val): self._silent = val
-	
+	def getBanlist(self): return [record[2] for record in self._banlist]
+		
 	name = property(getName)
 	mgr = property(getManager)
 	userlist = property(getUserlist)
@@ -309,6 +311,7 @@ class Room:
 	modnames = property(getModNames)
 	usercount = property(getUserCount)
 	silent = property(getSilent, setSilent)
+	banlist = property(getBanlist)
 	
 	####
 	# Feed/process
@@ -366,6 +369,7 @@ class Room:
 		del self._i_log
 		self._sendCommand("g_participants", "start")
 		self._sendCommand("getpremium", "1")
+		self.requestBanlist()
 		if self._connectAmmount == 0:
 			self._callEvent("onConnect")
 		else:
@@ -531,6 +535,32 @@ class Room:
 		self._userCount = int(args[0], 16)
 		self._callEvent("onUserCountChange")
 	
+	def rcmd_blocklist(self, args):
+		self._banlist = list()
+		sections = ":".join(args).split(";")
+		for section in sections:
+			params = section.split(":")
+			if len(params) != 5: continue
+			if params[2] == "": continue
+			self._banlist.append((
+				params[0], #unid
+				params[1], #ip
+				User(params[2]), #target
+				float(params[3]), #time
+				User(params[4]) #src
+			))
+		self._callEvent("onBanlistUpdate")
+	
+	def rcmd_blocked(self, args):
+		user = User(args[2])
+		self._callEvent("onBan", user)
+		self.requestBanlist()
+	
+	def rcmd_unblocked(self, args):
+		user = User(args[2])
+		self._callEvent("onUnban", user)
+		self.requestBanlist()
+	
 	####
 	# Commands
 	####
@@ -659,7 +689,7 @@ class Room:
 		@param message: message to ban sender of
 		"""
 		if self.getLevel(self.user) > 0:
-			self.rawBan(msg.unid, msg.ip, msg.user.name)
+			self.rawBan(msg.user.name, msg.ip, msg.unid)
 	
 	def banUser(self, user):
 		"""
@@ -677,6 +707,10 @@ class Room:
 			return True
 		return False
 	
+	def requestBanlist(self):
+		"""Request an updated banlist."""
+		self._sendCommand("blocklist", "block", "", "next", "500")
+	
 	def rawUnban(self, name, ip, unid):
 		"""
 		Execute the unblock command using specified arguments.
@@ -689,11 +723,34 @@ class Room:
 		@type unid: str
 		@param unid: unid
 		"""
-		self._sendCommand("unblock", unid, ip, name)
+		self._sendCommand("removeblock", unid, ip, name)
+	
+	def unban(self, user):
+		"""
+		Unban a user. (Moderator only)
+		
+		@type user: User
+		@param user: user to unban
+		
+		@rtype: bool
+		@return: whether it succeeded
+		"""
+		rec = self._getBanRecord(user)
+		if rec:
+			self.rawUnban(rec[2].name, rec[1], rec[0])
+			return True
+		else:
+			return False
 	
 	####
 	# Util
 	####
+	def _getBanRecord(self, user):
+		for record in self._banlist:
+			if record[2] == user:
+				return record
+		return None
+	
 	def _callEvent(self, evt, *args, **kw):
 		getattr(self.mgr, evt)(self, *args, **kw)
 		self.mgr.onEventCalled(self, evt, *args, **kw)
@@ -1026,6 +1083,37 @@ class RoomManager:
 	def onUserCountChange(self, room):
 		"""
 		Called when the user count changes.
+		
+		@type room: Room
+		@param room: room where the event occured
+		"""
+		pass
+	
+	def onBan(self, room, user):
+		"""
+		Called when a user gets banned.
+		
+		@type room: Room
+		@param room: room where the event occured
+		@type user: User
+		@param user: user that got banned
+		"""
+		pass
+	
+	def onUnban(self, room, user):
+		"""
+		Called when a user gets unbanned.
+		
+		@type room: Room
+		@param room: room where the event occured
+		@type user: User
+		@param user: user that got unbanned
+		"""
+		pass
+	
+	def onBanlistUpdate(self, room):
+		"""
+		Called when a banlist gets updated.
 		
 		@type room: Room
 		@param room: room where the event occured
