@@ -2,6 +2,7 @@
 # File: ch.py
 # Title: Chatango Library
 # Author: Lumirayz/Lumz <lumirayz@gmail.com>
+# Version: 1.0
 # Description:
 #  An event-based library for connecting to one or multiple Chatango rooms, has
 #  support for several things including: messaging, message font,
@@ -25,7 +26,6 @@ import random
 import re
 import sys
 import select
-import threading
 
 ################################################################
 # Python 2 compatibility
