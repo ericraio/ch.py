@@ -2,7 +2,7 @@
 # File: ch.py
 # Title: Chatango Library
 # Author: Lumirayz/Lumz <lumirayz@gmail.com>
-# Version: 1.1a
+# Version: 1.1b
 # Description:
 #  An event-based library for connecting to one or multiple Chatango rooms, has
 #  support for several things including: messaging, message font,
@@ -597,12 +597,12 @@ class Room:
 			msg = msg.replace("<", "&lt;").replace(">", "&gt;")
 		if len(msg) > self.mgr._maxLength:
 			if self.mgr._tooBigMessage == BigMessage_Cut:
-				self.message(msg[:self.mgr._maxLength])
+				self.message(msg[:self.mgr._maxLength], html = html)
 			elif self.mgr._tooBigMessage == BigMessage_Multiple:
 				while len(msg) > 0:
 					sect = msg[:self.mgr._maxLength]
 					msg = msg[self.mgr._maxLength:]
-					self.message(sect)
+					self.message(sect, html = html)
 			return
 		msg = "<n" + self.user.nameColor + "/>" + msg
 		msg = "<f x%0.2i%s=\"%s\">" %(self.user.fontSize, self.user.fontColor, self.user.fontFace) + msg
