@@ -2,7 +2,7 @@
 # File: ch.py
 # Title: Chatango Library
 # Author: Lumirayz/Lumz <lumirayz@gmail.com>
-# Version: 1.0
+# Version: 1.1
 # Description:
 #  An event-based library for connecting to one or multiple Chatango rooms, has
 #  support for several things including: messaging, message font,
@@ -386,13 +386,16 @@ class Room:
 			self._premium = False
 	
 	def rcmd_mods(self, args):
-		modnames = args[0].split(";")
+		modnames = args
+		print(modnames)
 		mods = set(map(lambda x: User(x), modnames))
 		premods = self._mods
-		for user in mods - premods: #demodded
-			self._mods.remove(user)
-		for user in premods - mods: #modded
+		for user in mods - premods: #modded
 			self._mods.add(user)
+			self._callEvent("onModAdd", user)
+		for user in premods - mods: #demodded
+			self._mods.remove(user)
+			self._callEvent("onModRemove", user)
 		self._callEvent("onModChange")
 	
 	def rcmd_b(self, args):
@@ -1011,6 +1014,24 @@ class RoomManager:
 	def onModChange(self, room):
 		"""
 		Called when the moderator list changes.
+		
+		@type room: Room
+		@param room: room where the event occured
+		"""
+		pass
+	
+	def onModAdd(self, room, user):
+		"""
+		Called when a moderator gets added.
+		
+		@type room: Room
+		@param room: room where the event occured
+		"""
+		pass
+	
+	def onModRemove(self, room, user):
+		"""
+		Called when a moderator gets removed.
 		
 		@type room: Room
 		@param room: room where the event occured
