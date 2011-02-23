@@ -2,7 +2,7 @@
 # File: ch.py
 # Title: Chatango Library
 # Author: Lumirayz/Lumz <lumirayz@gmail.com>
-# Version: 1.1
+# Version: 1.1a
 # Description:
 #  An event-based library for connecting to one or multiple Chatango rooms, has
 #  support for several things including: messaging, message font,
@@ -387,7 +387,6 @@ class Room:
 	
 	def rcmd_mods(self, args):
 		modnames = args
-		print(modnames)
 		mods = set(map(lambda x: User(x), modnames))
 		premods = self._mods
 		for user in mods - premods: #modded
