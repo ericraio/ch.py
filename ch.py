@@ -2,7 +2,7 @@
 # File: ch.py
 # Title: Chatango Library
 # Author: Lumirayz/Lumz <lumirayz@gmail.com>
-# Version: 1.1b
+# Version: 1.1c
 # Description:
 #  An event-based library for connecting to one or multiple Chatango rooms, has
 #  support for several things including: messaging, message font,
@@ -362,18 +362,18 @@ class Room:
 		self._callEvent("onConnectFail")
 	
 	def rcmd_inited(self, args):
-		for msg in reversed(self._i_log):
-			user = msg.user
-			self._callEvent("onHistoryMessage", user, msg)
-			self._addHistory(msg)
-		del self._i_log
 		self._sendCommand("g_participants", "start")
 		self._sendCommand("getpremium", "1")
 		self.requestBanlist()
 		if self._connectAmmount == 0:
 			self._callEvent("onConnect")
+			for msg in reversed(self._i_log):
+				user = msg.user
+				self._callEvent("onHistoryMessage", user, msg)
+				self._addHistory(msg)
 		else:
 			self._callEvent("onReconnect")
+		del self._i_log
 		self._connectAmmount += 1
 		self._setWriteLock(False)
 	
