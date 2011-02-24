@@ -2,7 +2,7 @@
 # File: ch.py
 # Title: Chatango Library
 # Author: Lumirayz/Lumz <lumirayz@gmail.com>
-# Version: 1.1c
+# Version: 1.1d
 # Description:
 #  An event-based library for connecting to one or multiple Chatango rooms, has
 #  support for several things including: messaging, message font,
@@ -138,9 +138,12 @@ def parseFont(f):
 	"""Parses the contents of a f tag and returns color, face and size."""
 	#' xSZCOL="FONT"'
 	try: #TODO: remove quick hack
-		size = int(f[2:4])
-		col = f[4:7]
-		face = f.split("\"")[1]
+		sizecolor, fontface = f.split("=", 1)
+		sizecolor = sizecolor.strip()
+		size = int(sizecolor[1:3])
+		col = sizecolor[3:6]
+		if col == "": col = None
+		face = f.split("\"", 2)[1]
 		return col, face, size
 	except:
 		return None, None, None
@@ -405,16 +408,18 @@ class Room:
 		rawmsg = ":".join(args[8:])
 		msg, n, f = clean_message(rawmsg)
 		if name == "":
-			nameColor = "000"
+			nameColor = None
 			name = "#" + args[2]
 			if name == "#":
 				name = "!anon" + getAnonId(n, puid)
 		else:
 			if n: nameColor = parseNameColor(n)
-			else: nameColor = "000"
+			else: nameColor = None
 		i = args[5]
 		unid = args[4]
 		#Create an anonymous message and queue it because msgid is unknown.
+		if f: fontColor, fontFace, fontSize = parseFont(f)
+		else: fontColor, fontFace, fontSize = None, None, None		
 		msg = Message(
 			time = mtime,
 			user = User(name),
@@ -422,10 +427,12 @@ class Room:
 			raw = rawmsg,
 			ip = ip,
 			nameColor = nameColor,
+			fontColor = fontColor,
+			fontFace = fontFace,
+			fontSize = fontSize,
 			unid = unid,
 			room = self
 		)
-		if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
 		self._mqueue[i] = msg
 	
 	def rcmd_u(self, args):
@@ -450,12 +457,16 @@ class Room:
 		msg, n, f = clean_message(rawmsg)
 		msgid = args[5]
 		if name == "":
-			nameColor = "000"
+			nameColor = None
 			name = "#" + args[2]
 			if name == "#":
 				name = "!anon" + getAnonId(n, puid)
 		else:
-			nameColor = parseNameColor(n)
+			if n: nameColor = parseNameColor(n)
+			else: nameColor = None
+		print(f)
+		if f: fontColor, fontFace, fontSize = parseFont(f)
+		else: fontColor, fontFace, fontSize = None, None, None
 		msg = self.createMessage(
 			msgid = msgid,
 			time = mtime,
@@ -465,9 +476,11 @@ class Room:
 			ip = args[6],
 			unid = args[4],
 			nameColor = nameColor,
+			fontColor = fontColor,
+			fontFace = fontFace,
+			fontSize = fontSize,
 			room = self
 		)
-		if f: msg._fontColor, msg._fontFace, msg._fontSize = parseFont(f)
 		if msg.user != self.user:
 			msg.user._fontColor = msg.fontColor
 			msg.user._fontFace = msg.fontFace
@@ -1400,6 +1413,7 @@ class _User:
 		self._fontFace = "0"
 		self._fontColor = "000"
 		for attr, val in kw.items():
+			if val == None: continue
 			setattr(self, "_" + attr, val)
 	
 	####
@@ -1507,6 +1521,8 @@ class Message:
 		self._fontFace = "0"
 		self._fontColor = "000"
 		for attr, val in kw.items():
+			if val == None: continue
+			print(attr, val)
 			setattr(self, "_" + attr, val)
 	
 	####
