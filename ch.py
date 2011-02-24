@@ -1491,7 +1491,7 @@ class Message:
 			self._msgid = None
 	
 	####
-	# Init, not __init__ this time!
+	# Init
 	####
 	def __init__(self, **kw):
 		self._msgid = None
