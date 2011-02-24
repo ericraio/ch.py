@@ -464,7 +464,6 @@ class Room:
 		else:
 			if n: nameColor = parseNameColor(n)
 			else: nameColor = None
-		print(f)
 		if f: fontColor, fontFace, fontSize = parseFont(f)
 		else: fontColor, fontFace, fontSize = None, None, None
 		msg = self.createMessage(
@@ -1522,7 +1521,6 @@ class Message:
 		self._fontColor = "000"
 		for attr, val in kw.items():
 			if val == None: continue
-			print(attr, val)
 			setattr(self, "_" + attr, val)
 	
 	####
