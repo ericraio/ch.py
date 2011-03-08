@@ -1069,7 +1069,7 @@ class RoomManager:
 		
 		@type room: Room
 		@param room: room where the event occured
-		@type user: Userhttps://github.com/lumirayz/ch.py/commit/fc890537e32f5d08fe1c3e53b822706cc65ee415
+		@type user: User
 		@param user: owner of message
 		@type message: Message
 		@param message: the message that got added
