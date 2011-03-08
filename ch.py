@@ -2,7 +2,7 @@
 # File: ch.py
 # Title: Chatango Library
 # Author: Lumirayz/Lumz <lumirayz@gmail.com>
-# Version: 1.1e
+# Version: 1.2
 # Description:
 #  An event-based library for connecting to one or multiple Chatango rooms, has
 #  support for several things including: messaging, message font,
@@ -863,6 +863,7 @@ class RoomManager:
 	def __init__(self, name = None, password = None):
 		self._name = name
 		self._password = password
+		self._running = False
 		self._tasks = set()
 		self._rooms = dict()
 	
@@ -1068,7 +1069,7 @@ class RoomManager:
 		
 		@type room: Room
 		@param room: room where the event occured
-		@type user: User
+		@type user: Userhttps://github.com/lumirayz/ch.py/commit/fc890537e32f5d08fe1c3e53b822706cc65ee415
 		@param user: owner of message
 		@type message: Message
 		@param message: the message that got added
@@ -1275,7 +1276,8 @@ class RoomManager:
 	####
 	def main(self):
 		self.onInit()
-		while True:
+		self._running = True
+		while self._running:
 			socks = [x._sock for x in self.rooms]
 			wsocks = [x._sock for x in filter(lambda x: x._wbuf != b"", self.rooms)]
 			rd, wr, sp = select.select(socks, wsocks, [], self._TimerResolution)
@@ -1319,6 +1321,11 @@ class RoomManager:
 		for room in rooms:
 			self.joinRoom(room)
 		self.main()
+	
+	def stop(self):
+		for conn in list(self._rooms.values()):
+			conn.disconnect()
+		self._running = False
 	
 	####
 	# Commands
