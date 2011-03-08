@@ -2,7 +2,7 @@
 # File: ch.py
 # Title: Chatango Library
 # Author: Lumirayz/Lumz <lumirayz@gmail.com>
-# Version: 1.1d
+# Version: 1.1e
 # Description:
 #  An event-based library for connecting to one or multiple Chatango rooms, has
 #  support for several things including: messaging, message font,
@@ -1286,7 +1286,6 @@ class RoomManager:
 					if(len(data) > 0):
 						con._feed(data)
 					else:
-						del self._rooms[con.name]
 						con.disconnect()
 				except socket.error:
 					pass
