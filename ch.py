@@ -2,7 +2,7 @@
 # File: ch.py
 # Title: Chatango Library
 # Author: Lumirayz/Lumz <lumirayz@gmail.com>
-# Version: 1.2
+# Version: 1.2a
 # Description:
 #  An event-based library for connecting to one or multiple Chatango rooms, has
 #  support for several things including: messaging, message font,
@@ -1417,6 +1417,8 @@ class _User:
 		self._fontSize = 12
 		self._fontFace = "0"
 		self._fontColor = "000"
+		self._mbg = False
+		self._mrec = False
 		for attr, val in kw.items():
 			if val == None: continue
 			setattr(self, "_" + attr, val)
