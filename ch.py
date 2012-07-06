@@ -60,7 +60,6 @@ def getServer(group):
 	try:
 		sn = specials[group]
 	except KeyError:
-		group = group.replace("_", "q")
 		group = group.replace("-", "q")
 		fnv = float(int(group[0:min(5, len(group))], 36))
 		lnv = group[6: (6 + min(3, len(group) - 5))]
